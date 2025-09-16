@@ -7,12 +7,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { supabase } from "@/integrations/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { User, LogOut, MapPin, Trash2, Navigation, RefreshCw } from "lucide-react"
+import type { User as SupabaseUser } from "@supabase/supabase-js"
 import type { google } from "google-maps"
-import { useAuth } from "@/contexts/AuthContext"
 
 const Dashboard = () => {
-  const { user, loading: authLoading } = useAuth()
-  const [loading, setLoading] = useState(false)
+  const [user, setUser] = useState<SupabaseUser | null>(null)
+  const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [destinations, setDestinations] = useState<string[]>([])
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null)
@@ -28,11 +28,32 @@ const Dashboard = () => {
   const navigate = useNavigate()
   const { toast } = useToast()
 
+  // ✅ Authentication
   useEffect(() => {
-    if (!authLoading && !user) {
-      navigate("/signin")
+    const getUser = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (user) {
+        setUser(user)
+      } else {
+        navigate("/signin")
+      }
+      setLoading(false)
     }
-  }, [user, authLoading, navigate])
+
+    getUser()
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_OUT" || !session) {
+        navigate("/signin")
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, [navigate])
 
   // ✅ Real-time location + Google Map
   useEffect(() => {
@@ -129,7 +150,7 @@ const Dashboard = () => {
         data: { user: currentUser },
       } = await supabase.auth.getUser()
       if (currentUser) {
-        // setUser(currentUser) // Removed as user is managed by context
+        setUser(currentUser)
       }
 
       // Refresh location
@@ -169,7 +190,7 @@ const Dashboard = () => {
     }
   }
 
-  if (authLoading || loading) {
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary/20 to-accent/10">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
