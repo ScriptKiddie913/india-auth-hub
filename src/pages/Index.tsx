@@ -10,7 +10,7 @@ const Index = () => {
       <div className="container mx-auto px-4 py-16 relative">
         {/* Background Image */}
         <img
-          src="/image/tourist.png"
+          src="/image/pic2.jpg"
           alt="Incredible India"
           className="absolute inset-0 w-full h-full object-cover opacity-90 -z-10"
         />
