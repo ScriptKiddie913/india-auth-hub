@@ -12,7 +12,7 @@ const Index = () => {
         <img
           src="/image/pic.jpg"
           alt="Incredible India"
-          className="absolute inset-0 w-full h-full object-cover opacity-20 -z-10"
+          className="absolute inset-0 w-full h-full object-cover opacity-60 -z-10"
         />
 
         <div className="text-center max-w-4xl mx-auto relative z-10">
