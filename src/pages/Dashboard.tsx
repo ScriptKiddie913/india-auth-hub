@@ -13,8 +13,10 @@ const Dashboard = () => {
   const [destinations, setDestinations] = useState<string[]>([]);
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
 
-  const inputRef = useRef<HTMLInputElement>(null);
-  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+  // 🔹 New OSM state
+  const [query, setQuery] = useState("");
+  const [suggestions, setSuggestions] = useState<any[]>([]);
+
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<google.maps.Map | null>(null);
   const markerRef = useRef<google.maps.Marker | null>(null);
@@ -45,22 +47,6 @@ const Dashboard = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  // ✅ Google Places Autocomplete
-  useEffect(() => {
-    if (window.google && inputRef.current) {
-      autocompleteRef.current = new google.maps.places.Autocomplete(inputRef.current, {
-        types: ["geocode", "establishment"],
-      });
-
-      autocompleteRef.current.addListener("place_changed", () => {
-        const place = autocompleteRef.current?.getPlace();
-        if (place && place.formatted_address) {
-          setDestinations((prev) => [...prev, place.formatted_address!]);
-        }
-      });
-    }
-  }, []);
-
   // ✅ Real-time location + Google Map
   useEffect(() => {
     if ("geolocation" in navigator) {
@@ -70,7 +56,6 @@ const Dashboard = () => {
           const lng = pos.coords.longitude;
           setLocation({ lat, lng });
 
-          // Init map once
           if (mapRef.current && !mapInstance.current && window.google) {
             mapInstance.current = new google.maps.Map(mapRef.current, {
               center: { lat, lng },
@@ -83,12 +68,9 @@ const Dashboard = () => {
             });
           }
 
-          // Update marker position
           if (markerRef.current) {
             markerRef.current.setPosition({ lat, lng });
           }
-
-          // Recenter map smoothly
           if (mapInstance.current) {
             mapInstance.current.panTo({ lat, lng });
           }
@@ -123,6 +105,31 @@ const Dashboard = () => {
       });
       navigate("/signin");
     }
+  };
+
+  // ✅ Fetch location suggestions from OpenStreetMap
+  const fetchSuggestions = async (value: string) => {
+    setQuery(value);
+    if (value.length < 3) {
+      setSuggestions([]);
+      return;
+    }
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}`
+      );
+      const data = await res.json();
+      setSuggestions(data);
+    } catch (err) {
+      console.error("Error fetching location suggestions:", err);
+    }
+  };
+
+  // ✅ Add destination
+  const addDestination = (place: any) => {
+    setDestinations((prev) => [...prev, place.display_name]);
+    setQuery("");
+    setSuggestions([]);
   };
 
   const removeDestination = (index: number) => {
@@ -202,30 +209,42 @@ const Dashboard = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div
-                  ref={mapRef}
-                  className="w-full h-64 rounded-lg border"
-                ></div>
+                <div ref={mapRef} className="w-full h-64 rounded-lg border"></div>
               </CardContent>
             </Card>
           )}
 
-          {/* Destinations Section */}
+          {/* ✅ Destinations Section with OSM Search */}
           <Card>
             <CardHeader>
               <CardTitle className="text-2xl font-bold">Plan Your Destinations</CardTitle>
               <CardDescription>
-                Search for locations using Google Maps and add them to your travel list.
+                Search for locations using OpenStreetMap and add them to your travel list.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center space-x-2 mb-4">
+              <div className="relative mb-4">
                 <input
-                  ref={inputRef}
                   type="text"
+                  value={query}
+                  onChange={(e) => fetchSuggestions(e.target.value)}
                   placeholder="Search for a location..."
                   className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                 />
+                {suggestions.length > 0 && (
+                  <ul className="absolute z-10 bg-white border rounded-md shadow-md w-full mt-1 max-h-60 overflow-auto">
+                    {suggestions.map((place, index) => (
+                      <li
+                        key={index}
+                        className="px-4 py-2 hover:bg-secondary cursor-pointer flex items-center space-x-2"
+                        onClick={() => addDestination(place)}
+                      >
+                        <MapPin className="w-4 h-4 text-primary" />
+                        <span>{place.display_name}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               {destinations.length > 0 && (
