@@ -1,91 +1,78 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Palmtree, MapPin, Star, Users, ArrowRight } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { MapPin, AlertTriangle, ShieldCheck } from "lucide-react";
 
 const Index = () => {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-secondary/20 to-accent/10">
+    <div className="relative min-h-screen bg-cover bg-center" style={{ backgroundImage: "url('/image/pic.jpg')" }}>
+      <div className="absolute inset-0 bg-black/40" /> {/* Dark overlay for readability */}
+
       {/* Hero Section */}
-      <div className="container mx-auto px-4 py-16 relative">
-        {/* Background Image */}
-        <img
-          src="/image/pic.jpg"
-          alt="Incredible India"
-          className="absolute inset-0 w-full h-full object-cover opacity-60 -z-10"
-        />
+      <div className="relative container mx-auto px-4 py-20 text-center text-white">
+        <h1 className="text-5xl md:text-6xl font-bold mb-6">
+          Your Safety is Our <span className="text-blue-400">Priority</span>
+        </h1>
+        <p className="text-lg md:text-xl max-w-3xl mx-auto mb-10 leading-relaxed">
+          Advanced real-time monitoring and alert system designed to keep tourists safe during their travels. 
+          Register, track, and stay connected with emergency services.
+        </p>
 
-        <div className="text-center max-w-4xl mx-auto relative z-10">
-          <div className="mx-auto w-20 h-20 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center mb-8 shadow-xl">
-            <Palmtree className="w-10 h-10 text-white" />
-          </div>
+        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+          <Link to="/signup">
+            <Button 
+              size="lg" 
+              className="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-8 py-6 text-lg shadow-lg transition-transform duration-300 hover:scale-105"
+            >
+              Register as Tourist
+            </Button>
+          </Link>
 
-          <h1 className="text-5xl md:text-7xl font-bold bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent mb-6 animate-fade-in">
-            Incredible India
-          </h1>
-
-          <p className="text-xl md:text-2xl text-muted-foreground mb-8 leading-relaxed">
-            Discover the magic, heritage, and diversity of India. 
-            Your journey to unforgettable experiences starts here.
-          </p>
-
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-            <Link to="/signup">
-              <Button 
-                size="lg" 
-                className="bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-white font-semibold px-8 py-6 text-lg shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-              >
-                Start Your Journey
-                <ArrowRight className="ml-2 w-5 h-5" />
-              </Button>
-            </Link>
-            
-            <Link to="/signin">
-              <Button 
-                variant="outline" 
-                size="lg"
-                className="px-8 py-6 text-lg border-2 border-primary text-primary hover:bg-primary hover:text-white transition-all duration-300"
-              >
-                Sign In
-              </Button>
-            </Link>
-          </div>
+          <Link to="/dashboard">
+            <Button 
+              size="lg" 
+              variant="outline" 
+              className="bg-white text-gray-900 px-8 py-6 text-lg border-2 border-white hover:bg-gray-100 transition-all duration-300"
+            >
+              View Safety Dashboard
+            </Button>
+          </Link>
         </div>
 
-        {/* Features Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-20 relative z-10">
-          <Card className="text-center hover:shadow-xl transition-all duration-300 transform hover:scale-105 border-0 bg-card/80 backdrop-blur-sm">
+        {/* Features Section */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-20">
+          <Card className="text-center bg-white/80 backdrop-blur-sm hover:shadow-xl transition-all duration-300 transform hover:scale-105">
             <CardHeader>
-              <div className="mx-auto w-16 h-16 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center mb-4">
+              <div className="mx-auto w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mb-4">
                 <MapPin className="w-8 h-8 text-white" />
               </div>
-              <CardTitle className="text-2xl font-bold">28 States</CardTitle>
-              <CardDescription className="text-lg">
-                Explore diverse destinations across India
+              <CardTitle className="text-xl font-bold">Real-time Tracking</CardTitle>
+              <CardDescription>
+                GPS-based location monitoring with instant emergency response capabilities
               </CardDescription>
             </CardHeader>
           </Card>
-          
-          <Card className="text-center hover:shadow-xl transition-all duration-300 transform hover:scale-105 border-0 bg-card/80 backdrop-blur-sm">
+
+          <Card className="text-center bg-white/80 backdrop-blur-sm hover:shadow-xl transition-all duration-300 transform hover:scale-105">
             <CardHeader>
-              <div className="mx-auto w-16 h-16 bg-gradient-to-br from-accent to-primary rounded-full flex items-center justify-center mb-4">
-                <Star className="w-8 h-8 text-white" />
+              <div className="mx-auto w-16 h-16 bg-yellow-500 rounded-full flex items-center justify-center mb-4">
+                <AlertTriangle className="w-8 h-8 text-white" />
               </div>
-              <CardTitle className="text-2xl font-bold">1000+ Experiences</CardTitle>
-              <CardDescription className="text-lg">
-                From heritage tours to adventure activities
+              <CardTitle className="text-xl font-bold">Smart Alerts</CardTitle>
+              <CardDescription>
+                Instant notifications for weather, safety zones, and emergency situations
               </CardDescription>
             </CardHeader>
           </Card>
-          
-          <Card className="text-center hover:shadow-xl transition-all duration-300 transform hover:scale-105 border-0 bg-card/80 backdrop-blur-sm">
+
+          <Card className="text-center bg-white/80 backdrop-blur-sm hover:shadow-xl transition-all duration-300 transform hover:scale-105">
             <CardHeader>
-              <div className="mx-auto w-16 h-16 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center mb-4">
-                <Users className="w-8 h-8 text-white" />
+              <div className="mx-auto w-16 h-16 bg-blue-500 rounded-full flex items-center justify-center mb-4">
+                <ShieldCheck className="w-8 h-8 text-white" />
               </div>
-              <CardTitle className="text-2xl font-bold">50M+ Travelers</CardTitle>
-              <CardDescription className="text-lg">
-                Join millions who've discovered India
+              <CardTitle className="text-xl font-bold">24/7 Support</CardTitle>
+              <CardDescription>
+                Round-the-clock emergency assistance and safety support services
               </CardDescription>
             </CardHeader>
           </Card>
