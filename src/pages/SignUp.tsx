@@ -40,6 +40,7 @@ const SignUp = () => {
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // ✅ Strong password validation
     const strongPasswordRegex =
       /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{12,}$/;
 
@@ -114,10 +115,11 @@ const SignUp = () => {
       className="min-h-screen flex items-center justify-center p-4 bg-cover bg-center relative"
       style={{ backgroundImage: "url('/image/signup.jpg')" }}
     >
-      {/* Dark overlay to improve readability */}
-      <div className="absolute inset-0 bg-black/40"></div>
+      {/* Gradient overlay for style & readability */}
+      <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/20 to-black/40"></div>
 
-      <Card className="w-full max-w-md mx-auto backdrop-blur-sm bg-card/95 shadow-2xl border-0 animate-fade-in relative z-10">
+      {/* Glassmorphism Card */}
+      <Card className="w-full max-w-md mx-auto backdrop-blur-md bg-white/90 shadow-2xl border border-white/20 animate-fade-in relative z-10">
         <CardHeader className="text-center pb-6">
           <div className="mx-auto w-16 h-16 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center mb-4 shadow-lg">
             <Palmtree className="w-8 h-8 text-white" />
@@ -132,6 +134,7 @@ const SignUp = () => {
 
         <CardContent className="space-y-6">
           <form onSubmit={handleSignUp} className="space-y-4">
+            {/* Full Name */}
             <div className="space-y-2">
               <Label htmlFor="fullName" className="text-sm font-medium">
                 Full Name
@@ -151,6 +154,7 @@ const SignUp = () => {
               </div>
             </div>
 
+            {/* Email */}
             <div className="space-y-2">
               <Label htmlFor="email" className="text-sm font-medium">
                 Email Address
@@ -170,6 +174,7 @@ const SignUp = () => {
               </div>
             </div>
 
+            {/* Password */}
             <div className="space-y-2">
               <Label htmlFor="password" className="text-sm font-medium">
                 Password
@@ -196,6 +201,7 @@ const SignUp = () => {
               </div>
             </div>
 
+            {/* Confirm Password */}
             <div className="space-y-2">
               <Label htmlFor="confirmPassword" className="text-sm font-medium">
                 Confirm Password
@@ -224,13 +230,19 @@ const SignUp = () => {
               </div>
             </div>
 
+            {/* Terms */}
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="terms"
                 checked={acceptTerms}
-                onCheckedChange={(checked) => setAcceptTerms(checked as boolean)}
+                onCheckedChange={(checked) =>
+                  setAcceptTerms(checked as boolean)
+                }
               />
-              <Label htmlFor="terms" className="text-sm text-muted-foreground">
+              <Label
+                htmlFor="terms"
+                className="text-sm text-muted-foreground"
+              >
                 I accept the{" "}
                 <Link to="/terms" className="text-primary hover:underline">
                   Terms of Service
@@ -242,6 +254,7 @@ const SignUp = () => {
               </Label>
             </div>
 
+            {/* Button */}
             <Button
               type="submit"
               className="w-full h-12 bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02]"
@@ -251,15 +264,17 @@ const SignUp = () => {
             </Button>
           </form>
 
+          {/* Separator */}
           <div className="relative">
             <Separator />
             <div className="absolute inset-0 flex items-center justify-center">
-              <span className="bg-card px-4 text-sm text-muted-foreground">
+              <span className="bg-white/90 px-4 text-sm text-muted-foreground rounded">
                 Already have an account?
               </span>
             </div>
           </div>
 
+          {/* Sign in link */}
           <div className="text-center">
             <Link
               to="/signin"
