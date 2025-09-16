@@ -16,39 +16,33 @@
     <meta name="twitter:site" content="@lovable_dev" />
     <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
 
+    <!-- ✅ Redirect fix for Vercel refresh -->
+    <script>
+      if (!location.pathname.match(/^\/($|index\.html)/)) {
+        sessionStorage.redirect = location.pathname;
+        location.replace("/");
+      }
+    </script>
+
     <!-- ✅ Google Maps API with Places Library -->
     <script
       src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBU7z2W7aE4T6TSV7SqEk0UJiyjAC97UW8&libraries=places"
       async
       defer
     ></script>
-
-    <!-- ✅ SPA Refresh Fix -->
-    <script>
-      (function () {
-        // If the browser requests a direct file that doesn’t exist (like /dashboard)
-        // force redirect to index.html while keeping the path
-        var redirect = sessionStorage.redirect;
-        if (redirect && redirect !== location.href) {
-          sessionStorage.removeItem("redirect");
-          history.replaceState(null, null, redirect);
-        }
-      })();
-    </script>
   </head>
 
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
 
-    <!-- Capture 404s and redirect to index.html -->
     <script>
-      window.addEventListener("error", function (e) {
-        if (e.target.tagName === "SCRIPT" && e.target.src.includes("/")) {
-          sessionStorage.redirect = window.location.pathname;
-          window.location.href = "/";
-        }
-      });
+      // Restore the path after redirect
+      if (sessionStorage.redirect) {
+        const redirectPath = sessionStorage.redirect;
+        delete sessionStorage.redirect;
+        history.replaceState(null, null, redirectPath);
+      }
     </script>
   </body>
 </html>
