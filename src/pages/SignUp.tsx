@@ -111,8 +111,16 @@ const SignUp = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary/20 to-accent/10 p-4">
-      <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZjZkMDAiIGZpbGwtb3BhY2l0eT0iMC4wMyI+PGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iNCIvPjwvZz48L2c+PC9zdmc+')] opacity-40"></div>
+    <div className="min-h-screen flex items-center justify-center relative p-4">
+      {/* Background Image */}
+      <img
+        src="/image/signup.jpg"
+        alt="Sign up background"
+        className="absolute inset-0 w-full h-full object-cover opacity-60 -z-10"
+      />
+
+      {/* Overlay to ensure text is visible */}
+      <div className="absolute inset-0 bg-gradient-to-br from-background/70 via-secondary/40 to-accent/30 -z-10"></div>
 
       <Card className="w-full max-w-md mx-auto backdrop-blur-sm bg-card/95 shadow-2xl border-0 animate-fade-in">
         <CardHeader className="text-center pb-6">
@@ -211,7 +219,9 @@ const SignUp = () => {
                 />
                 <button
                   type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  onClick={() =>
+                    setShowConfirmPassword(!showConfirmPassword)
+                  }
                   className="absolute right-3 top-3 h-4 w-4 text-muted-foreground hover:text-foreground transition-colors"
                 >
                   {showConfirmPassword ? <EyeOff /> : <Eye />}
@@ -270,3 +280,4 @@ const SignUp = () => {
 };
 
 export default SignUp;
+
