@@ -9,16 +9,24 @@
 
     <meta property="og:title" content="india-auth-hub" />
     <meta property="og:description" content="Lovable Generated Project" />
-    <meta property="og:type" content="website" /> 
+    <meta property="og:type" content="website" />
     <meta property="og:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@lovable_dev" />
     <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
 
-    <!-- ✅ Google Maps JavaScript API (with Places library) -->
+    <!-- ✅ Redirect fix for Vercel refresh -->
+    <script>
+      if (!location.pathname.match(/^\/($|index\.html)/)) {
+        sessionStorage.redirect = location.pathname;
+        location.replace("/");
+      }
+    </script>
+
+    <!-- ✅ Google Maps API with Places Library -->
     <script
-      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAROkcQvdSDikTJsQ3IsceI3AP01N631xs&libraries=places"
+      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBU7z2W7aE4T6TSV7SqEk0UJiyjAC97UW8&libraries=places"
       async
       defer
     ></script>
@@ -27,5 +35,15 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+
+    <script>
+      // Restore the path after redirect
+      if (sessionStorage.redirect) {
+        const redirectPath = sessionStorage.redirect;
+        delete sessionStorage.redirect;
+        history.replaceState(null, null, redirectPath);
+      }
+    </script>
   </body>
 </html>
+
