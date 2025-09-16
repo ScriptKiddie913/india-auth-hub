@@ -3,40 +3,46 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>India Auth Hub</title>
-    <meta name="description" content="Smart Tourist Safety & Authentication Platform" />
+    <title>india-auth-hub</title>
+    <meta name="description" content="Lovable Generated Project" />
     <meta name="author" content="Lovable" />
 
-    <!-- Open Graph -->
-    <meta property="og:title" content="India Auth Hub" />
-    <meta property="og:description" content="Smart Tourist Safety & Authentication Platform" />
+    <meta property="og:title" content="india-auth-hub" />
+    <meta property="og:description" content="Lovable Generated Project" />
     <meta property="og:type" content="website" />
     <meta property="og:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
 
-    <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@lovable_dev" />
     <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
 
-    <!-- Styles -->
-    <link rel="stylesheet" href="index.css" />
-    <link rel="stylesheet" href="app.css" />
+    <!-- ✅ Redirect fix for Vercel refresh -->
+    <script>
+      if (!location.pathname.match(/^\/($|index\.html)/)) {
+        sessionStorage.redirect = location.pathname;
+        location.replace("/");
+      }
+    </script>
+
+    <!-- ✅ Google Maps API with Places Library -->
+    <script
+      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBU7z2W7aE4T6TSV7SqEk0UJiyjAC97UW8&libraries=places"
+      async
+      defer
+    ></script>
   </head>
 
   <body>
-    <!-- ✅ Hero Section -->
-    <section class="hero">
-      <div class="hero-content">
-        <h1>
-          Welcome to <span class="highlight">India Auth Hub</span>
-        </h1>
-        <p>Smart Tourist Safety & Authentication Platform</p>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
 
-        <div class="buttons">
-          <button class="button-primary">Register as Tourist</button>
-          <button class="button-secondary">View Safety Dashboard</button>
-        </div>
-      </div>
-    </section>
+    <script>
+      // Restore the path after redirect
+      if (sessionStorage.redirect) {
+        const redirectPath = sessionStorage.redirect;
+        delete sessionStorage.redirect;
+        history.replaceState(null, null, redirectPath);
+      }
+    </script>
   </body>
 </html>

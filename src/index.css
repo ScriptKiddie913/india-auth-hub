@@ -2,101 +2,99 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Nature + Travel Safety Theme based on the hero image */
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
 
 @layer base {
   :root {
-    /* Light Mode */
-    --background: 210 50% 98%;      /* Soft sky */
-    --foreground: 220 20% 15%;      /* Dark slate for text */
+    /* Indian Tourism Theme - Light Mode */
+    --background: 35 100% 98%;
+    --foreground: 25 15% 15%;
 
-    --card: 0 0% 100%;              /* White cards */
-    --card-foreground: 220 20% 15%;
+    --card: 0 0% 100%;
+    --card-foreground: 25 15% 15%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 220 20% 15%;
+    --popover-foreground: 25 15% 15%;
 
-    /* Primary = Sky Blue */
-    --primary: 210 80% 55%;         /* Clear sky blue */
+    /* Saffron Orange Primary */
+    --primary: 25 95% 53%;
     --primary-foreground: 0 0% 100%;
 
-    /* Secondary = Warm Orange (from backpack & flowers) */
-    --secondary: 25 90% 55%;
-    --secondary-foreground: 0 0% 100%;
+    /* Warm Gold Secondary */
+    --secondary: 45 100% 85%;
+    --secondary-foreground: 25 15% 15%;
 
-    /* Muted = Cloudy grey */
-    --muted: 210 25% 90%;
-    --muted-foreground: 220 10% 40%;
+    --muted: 35 50% 95%;
+    --muted-foreground: 25 8% 45%;
 
-    /* Accent = Forest Green */
-    --accent: 145 45% 45%;
+    /* Royal Blue Accent */
+    --accent: 215 85% 60%;
     --accent-foreground: 0 0% 100%;
 
-    /* Alerts / destructive */
-    --destructive: 0 75% 55%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    /* Borders & inputs */
-    --border: 210 25% 85%;
-    --input: 210 25% 90%;
-    --ring: 210 80% 55%;
+    --border: 35 30% 85%;
+    --input: 35 30% 90%;
+    --ring: 25 95% 53%;
 
-    /* Gradients inspired by sky & mountains */
-    --gradient-primary: linear-gradient(135deg, hsl(210 80% 55%), hsl(145 45% 45%));
-    --gradient-sunset: linear-gradient(135deg, hsl(25 90% 55%), hsl(15 80% 50%));
-    --gradient-mountain: linear-gradient(180deg, hsl(210 30% 85%), hsl(220 25% 65%));
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(25 95% 53%), hsl(35 100% 65%));
+    --gradient-royal: linear-gradient(135deg, hsl(215 85% 60%), hsl(240 75% 50%));
+    --gradient-sunset: linear-gradient(180deg, hsl(25 95% 53%), hsl(15 90% 60%));
 
     --radius: 0.75rem;
 
-    /* Sidebar */
-    --sidebar-background: 210 50% 98%;
-    --sidebar-foreground: 220 20% 15%;
-    --sidebar-primary: 210 80% 55%;
+    --sidebar-background: 35 100% 98%;
+    --sidebar-foreground: 25 15% 25%;
+    --sidebar-primary: 25 95% 53%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 145 45% 45%;
-    --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 210 25% 85%;
-    --sidebar-ring: 210 80% 55%;
+    --sidebar-accent: 35 50% 95%;
+    --sidebar-accent-foreground: 25 15% 25%;
+    --sidebar-border: 35 30% 85%;
+    --sidebar-ring: 25 95% 53%;
   }
 
   .dark {
-    /* Dark Mode */
-    --background: 220 25% 10%;
-    --foreground: 210 25% 95%;
+    /* Indian Tourism Theme - Dark Mode */
+    --background: 25 15% 8%;
+    --foreground: 35 50% 95%;
 
-    --card: 220 25% 15%;
-    --card-foreground: 210 25% 95%;
+    --card: 25 15% 10%;
+    --card-foreground: 35 50% 95%;
 
-    --popover: 220 25% 15%;
-    --popover-foreground: 210 25% 95%;
+    --popover: 25 15% 10%;
+    --popover-foreground: 35 50% 95%;
 
-    --primary: 210 80% 60%;
-    --primary-foreground: 220 25% 10%;
+    --primary: 25 95% 55%;
+    --primary-foreground: 25 15% 8%;
 
-    --secondary: 25 90% 55%;
-    --secondary-foreground: 220 25% 10%;
+    --secondary: 25 20% 15%;
+    --secondary-foreground: 35 50% 95%;
 
-    --muted: 220 15% 20%;
-    --muted-foreground: 210 15% 70%;
+    --muted: 25 20% 15%;
+    --muted-foreground: 35 20% 65%;
 
-    --accent: 145 45% 50%;
-    --accent-foreground: 220 25% 10%;
+    --accent: 215 85% 65%;
+    --accent-foreground: 25 15% 8%;
 
     --destructive: 0 75% 55%;
-    --destructive-foreground: 220 25% 95%;
+    --destructive-foreground: 35 50% 95%;
 
-    --border: 220 20% 20%;
-    --input: 220 20% 25%;
-    --ring: 210 80% 60%;
+    --border: 25 20% 20%;
+    --input: 25 20% 18%;
+    --ring: 25 95% 55%;
 
-    --sidebar-background: 220 25% 10%;
-    --sidebar-foreground: 210 25% 95%;
-    --sidebar-primary: 210 80% 60%;
-    --sidebar-primary-foreground: 220 25% 10%;
-    --sidebar-accent: 145 45% 50%;
-    --sidebar-accent-foreground: 220 25% 10%;
-    --sidebar-border: 220 20% 20%;
-    --sidebar-ring: 210 80% 60%;
+    --sidebar-background: 25 15% 8%;
+    --sidebar-foreground: 35 50% 95%;
+    --sidebar-primary: 25 95% 55%;
+    --sidebar-primary-foreground: 25 15% 8%;
+    --sidebar-accent: 25 20% 15%;
+    --sidebar-accent-foreground: 35 50% 95%;
+    --sidebar-border: 25 20% 20%;
+    --sidebar-ring: 25 95% 55%;
   }
 }
 

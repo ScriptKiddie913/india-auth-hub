@@ -1,70 +1,42 @@
-/* Hero Background with Gradient + Mountain Image */
-.hero {
-  height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  color: white;
-
-  background: 
-    linear-gradient(
-      180deg,
-      rgba(10, 40, 80, 0.7),
-      rgba(20, 20, 20, 0.7)
-    ),
-    url("mountains-bg.jpg"); /* ⛰️ Put your image in same folder or /public */
-  background-size: cover;
-  background-position: center;
-  background-attachment: fixed;
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
   padding: 2rem;
+  text-align: center;
 }
 
-.hero h1 {
-  font-size: 3rem;
-  margin-bottom: 1rem;
-  text-shadow: 0 3px 6px rgba(0, 0, 0, 0.6);
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
 }
 
-.hero h1 .highlight {
-  color: hsl(25, 90%, 55%); /* Warm orange accent */
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
-.hero p {
-  font-size: 1.25rem;
-  margin-bottom: 2rem;
-  color: #f0f0f0;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
 }
 
-/* Buttons */
-.button-primary,
-.button-secondary {
-  padding: 0.75rem 1.5rem;
-  border-radius: 8px;
-  font-weight: 600;
-  border: none;
-  cursor: pointer;
-  margin: 0.5rem;
-  transition: transform 0.2s ease, background 0.3s ease;
+.card {
+  padding: 2em;
 }
 
-/* Sky Blue */
-.button-primary {
-  background: hsl(210, 80%, 55%);
-  color: white;
-}
-.button-primary:hover {
-  background: hsl(210, 80%, 45%);
-  transform: translateY(-2px);
-}
-
-/* Warm Orange */
-.button-secondary {
-  background: hsl(25, 90%, 55%);
-  color: white;
-}
-.button-secondary:hover {
-  background: hsl(25, 90%, 45%);
-  transform: translateY(-2px);
+.read-the-docs {
+  color: #888;
 }
