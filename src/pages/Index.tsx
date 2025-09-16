@@ -1,27 +1,34 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Palmtree, MapPin, Star, Users, ArrowRight } from "lucide-react";
 
 const Index = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-secondary/20 to-accent/10">
       {/* Hero Section */}
-      <div className="container mx-auto px-4 py-16">
-        <div className="text-center max-w-4xl mx-auto">
+      <div className="container mx-auto px-4 py-16 relative">
+        {/* Background Image */}
+        <img
+          src="/image/pic.jpg"
+          alt="Incredible India"
+          className="absolute inset-0 w-full h-full object-cover opacity-20 -z-10"
+        />
+
+        <div className="text-center max-w-4xl mx-auto relative z-10">
           <div className="mx-auto w-20 h-20 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center mb-8 shadow-xl">
             <Palmtree className="w-10 h-10 text-white" />
           </div>
-          
+
           <h1 className="text-5xl md:text-7xl font-bold bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent mb-6 animate-fade-in">
             Incredible India
           </h1>
-          
+
           <p className="text-xl md:text-2xl text-muted-foreground mb-8 leading-relaxed">
             Discover the magic, heritage, and diversity of India. 
             Your journey to unforgettable experiences starts here.
           </p>
-          
+
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
             <Link to="/signup">
               <Button 
@@ -44,9 +51,9 @@ const Index = () => {
             </Link>
           </div>
         </div>
-        
+
         {/* Features Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-20">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-20 relative z-10">
           <Card className="text-center hover:shadow-xl transition-all duration-300 transform hover:scale-105 border-0 bg-card/80 backdrop-blur-sm">
             <CardHeader>
               <div className="mx-auto w-16 h-16 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center mb-4">
