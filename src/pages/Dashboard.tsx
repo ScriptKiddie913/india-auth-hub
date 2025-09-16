@@ -1,15 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { User, LogOut, MapPin, Calendar, Users, Star } from "lucide-react";
+import { User, LogOut, MapPin, Calendar, Users, Star, Trash2 } from "lucide-react";
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 const Dashboard = () => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [destinations, setDestinations] = useState<string[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -35,6 +39,22 @@ const Dashboard = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
+  // Initialize Google Maps Autocomplete
+  useEffect(() => {
+    if (window.google && inputRef.current) {
+      autocompleteRef.current = new google.maps.places.Autocomplete(inputRef.current, {
+        types: ["geocode", "establishment"],
+      });
+
+      autocompleteRef.current.addListener("place_changed", () => {
+        const place = autocompleteRef.current?.getPlace();
+        if (place && place.formatted_address) {
+          setDestinations((prev) => [...prev, place.formatted_address!]);
+        }
+      });
+    }
+  }, []);
+
   const handleSignOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
@@ -50,6 +70,10 @@ const Dashboard = () => {
       });
       navigate("/signin");
     }
+  };
+
+  const removeDestination = (index: number) => {
+    setDestinations((prev) => prev.filter((_, i) => i !== index));
   };
 
   if (loading) {
@@ -168,6 +192,46 @@ const Dashboard = () => {
                 <span>•</span>
                 <Star className="w-6 h-6" />
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Destinations Section */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-2xl font-bold">Plan Your Destinations</CardTitle>
+              <CardDescription>
+                Search for locations using Google Maps and add them to your travel list.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center space-x-2 mb-4">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  placeholder="Search for a location..."
+                  className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+
+              {destinations.length > 0 && (
+                <ul className="space-y-2">
+                  {destinations.map((dest, index) => (
+                    <li
+                      key={index}
+                      className="flex justify-between items-center bg-secondary/20 px-4 py-2 rounded-md"
+                    >
+                      <span>{dest}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeDestination(index)}
+                      >
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </CardContent>
           </Card>
         </div>
