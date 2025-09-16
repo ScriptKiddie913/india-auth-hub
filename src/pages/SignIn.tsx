@@ -3,7 +3,13 @@ import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -40,7 +46,7 @@ const SignIn = () => {
         });
         navigate("/dashboard");
       }
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "An unexpected error occurred",
@@ -52,10 +58,14 @@ const SignIn = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary/20 to-accent/10 p-4">
-      <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZjZkMDAiIGZpbGwtb3BhY2l0eT0iMC4wMyI+PGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iNCIvPjwvZz48L2c+PC9zdmc+')] opacity-40"></div>
-      
-      <Card className="w-full max-w-md mx-auto backdrop-blur-sm bg-card/95 shadow-2xl border-0 animate-fade-in">
+    <div
+      className="min-h-screen flex items-center justify-center bg-cover bg-center relative p-4"
+      style={{ backgroundImage: "url('/image/signin.jpg')" }}
+    >
+      {/* Overlay for better readability */}
+      <div className="absolute inset-0 bg-black/40" />
+
+      <Card className="w-full max-w-md mx-auto backdrop-blur-md bg-white/90 shadow-2xl border border-white/20 relative z-10 animate-fade-in">
         <CardHeader className="text-center pb-6">
           <div className="mx-auto w-16 h-16 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center mb-4 shadow-lg">
             <Palmtree className="w-8 h-8 text-white" />
@@ -70,6 +80,7 @@ const SignIn = () => {
 
         <CardContent className="space-y-6">
           <form onSubmit={handleSignIn} className="space-y-4">
+            {/* Email */}
             <div className="space-y-2">
               <Label htmlFor="email" className="text-sm font-medium">
                 Email Address
@@ -88,6 +99,7 @@ const SignIn = () => {
               </div>
             </div>
 
+            {/* Password */}
             <div className="space-y-2">
               <Label htmlFor="password" className="text-sm font-medium">
                 Password
@@ -113,6 +125,7 @@ const SignIn = () => {
               </div>
             </div>
 
+            {/* Submit */}
             <Button
               type="submit"
               className="w-full h-12 bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02]"
@@ -122,15 +135,17 @@ const SignIn = () => {
             </Button>
           </form>
 
+          {/* Divider */}
           <div className="relative">
             <Separator />
             <div className="absolute inset-0 flex items-center justify-center">
-              <span className="bg-card px-4 text-sm text-muted-foreground">
+              <span className="bg-white/90 px-4 text-sm text-muted-foreground">
                 Don't have an account?
               </span>
             </div>
           </div>
 
+          {/* Signup link */}
           <div className="text-center">
             <Link
               to="/signup"
