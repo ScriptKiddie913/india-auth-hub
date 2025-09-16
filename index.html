@@ -4,8 +4,27 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>india-auth-hub</title>
+    <meta name="description" content="Lovable Generated Project" />
+    <meta name="author" content="Lovable" />
 
-    <!-- Google Maps API -->
+    <meta property="og:title" content="india-auth-hub" />
+    <meta property="og:description" content="Lovable Generated Project" />
+    <meta property="og:type" content="website" />
+  
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@lovable_dev" />
+
+
+    <!-- ✅ Redirect fix for Vercel refresh -->
+    <script>
+      if (!location.pathname.match(/^\/($|index\.html)/)) {
+        sessionStorage.redirect = location.pathname;
+        location.replace("/");
+      }
+    </script>
+
+    <!-- ✅ Google Maps API with Places Library -->
     <script
       src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBU7z2W7aE4T6TSV7SqEk0UJiyjAC97UW8&libraries=places"
       async
@@ -16,5 +35,14 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+
+    <script>
+      // Restore the path after redirect
+      if (sessionStorage.redirect) {
+        const redirectPath = sessionStorage.redirect;
+        delete sessionStorage.redirect;
+        history.replaceState(null, null, redirectPath);
+      }
+    </script>
   </body>
 </html>
