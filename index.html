@@ -16,33 +16,24 @@
     <meta name="twitter:site" content="@lovable_dev" />
     <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
 
-    <!-- ✅ Redirect fix for Vercel refresh -->
-    <script>
-      if (!location.pathname.match(/^\/($|index\.html)/)) {
-        sessionStorage.redirect = location.pathname;
-        location.replace("/");
-      }
-    </script>
-
-    <!-- ✅ Google Maps API with Places Library -->
-    <script
-      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBU7z2W7aE4T6TSV7SqEk0UJiyjAC97UW8&libraries=places"
-      async
-      defer
-    ></script>
+    <link rel="stylesheet" href="index.css" />
+    <link rel="stylesheet" href="app.css" />
   </head>
 
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <!-- ✅ Hero Section -->
+    <section class="hero">
+      <div class="hero-content">
+        <h1>
+          Welcome to <span class="highlight">India Auth Hub</span>
+        </h1>
+        <p>Smart Tourist Safety & Authentication Platform</p>
 
-    <script>
-      // Restore the path after redirect
-      if (sessionStorage.redirect) {
-        const redirectPath = sessionStorage.redirect;
-        delete sessionStorage.redirect;
-        history.replaceState(null, null, redirectPath);
-      }
-    </script>
+        <div class="buttons">
+          <button class="button-primary">Register as Tourist</button>
+          <button class="button-secondary">View Safety Dashboard</button>
+        </div>
+      </div>
+    </section>
   </body>
 </html>
