@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,9 +10,11 @@ import type { User as SupabaseUser } from '@supabase/supabase-js';
 const Dashboard = () => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const [destinations, setDestinations] = useState<string[]>([]);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+
+  // 🔹 For destinations
+  const [query, setQuery] = useState("");
+  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [destinations, setDestinations] = useState<any[]>([]);
 
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -39,22 +41,6 @@ const Dashboard = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  // Initialize Google Maps Autocomplete
-  useEffect(() => {
-    if (window.google && inputRef.current) {
-      autocompleteRef.current = new google.maps.places.Autocomplete(inputRef.current, {
-        types: ["geocode", "establishment"],
-      });
-
-      autocompleteRef.current.addListener("place_changed", () => {
-        const place = autocompleteRef.current?.getPlace();
-        if (place && place.formatted_address) {
-          setDestinations((prev) => [...prev, place.formatted_address!]);
-        }
-      });
-    }
-  }, []);
-
   const handleSignOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
@@ -70,6 +56,30 @@ const Dashboard = () => {
       });
       navigate("/signin");
     }
+  };
+
+  // 🔹 Fetch suggestions from OpenStreetMap Nominatim
+  const fetchSuggestions = async (value: string) => {
+    setQuery(value);
+    if (value.length < 3) {
+      setSuggestions([]);
+      return;
+    }
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}`
+      );
+      const data = await res.json();
+      setSuggestions(data);
+    } catch (err) {
+      console.error("Error fetching location suggestions:", err);
+    }
+  };
+
+  const addDestination = (place: any) => {
+    setDestinations((prev) => [...prev, place]);
+    setSuggestions([]);
+    setQuery("");
   };
 
   const removeDestination = (index: number) => {
@@ -200,19 +210,37 @@ const Dashboard = () => {
             <CardHeader>
               <CardTitle className="text-2xl font-bold">Plan Your Destinations</CardTitle>
               <CardDescription>
-                Search for locations using Google Maps and add them to your travel list.
+                Search for locations and add them to your travel list.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center space-x-2 mb-4">
+              {/* Search Input */}
+              <div className="relative mb-4">
                 <input
-                  ref={inputRef}
                   type="text"
+                  value={query}
+                  onChange={(e) => fetchSuggestions(e.target.value)}
                   placeholder="Search for a location..."
                   className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                 />
+                {/* Suggestions Dropdown */}
+                {suggestions.length > 0 && (
+                  <ul className="absolute z-10 bg-white border rounded-md shadow-md w-full mt-1 max-h-60 overflow-auto">
+                    {suggestions.map((place, index) => (
+                      <li
+                        key={index}
+                        className="px-4 py-2 hover:bg-secondary cursor-pointer flex items-center space-x-2"
+                        onClick={() => addDestination(place)}
+                      >
+                        <MapPin className="w-4 h-4 text-primary" />
+                        <span>{place.display_name}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
+              {/* Destinations List */}
               {destinations.length > 0 && (
                 <ul className="space-y-2">
                   {destinations.map((dest, index) => (
@@ -220,7 +248,7 @@ const Dashboard = () => {
                       key={index}
                       className="flex justify-between items-center bg-secondary/20 px-4 py-2 rounded-md"
                     >
-                      <span>{dest}</span>
+                      <span>{dest.display_name}</span>
                       <Button
                         variant="ghost"
                         size="icon"
