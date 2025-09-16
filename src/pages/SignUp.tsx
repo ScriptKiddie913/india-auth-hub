@@ -112,7 +112,7 @@ const SignUp = () => {
   return (
     <div
       className="min-h-screen flex items-center justify-center p-4 relative bg-cover bg-center bg-no-repeat"
-      style={{ backgroundImage: "url('/image/pic.jpg')" }}
+      style={{ backgroundImage: "url('/public/image/pic.jpg')" }}
     >
       {/* Overlay for readability */}
       <div className="absolute inset-0 bg-gradient-to-br from-background/80 via-secondary/40 to-accent/20" />
