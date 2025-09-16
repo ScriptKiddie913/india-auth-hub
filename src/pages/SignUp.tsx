@@ -3,13 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
@@ -31,32 +25,18 @@ const SignUp = () => {
   const { toast } = useToast();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData((prev) => ({
+    setFormData(prev => ({
       ...prev,
-      [e.target.name]: e.target.value,
+      [e.target.name]: e.target.value
     }));
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    // ✅ Strong password validation
-    const strongPasswordRegex =
-      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{12,}$/;
-
-    if (!strongPasswordRegex.test(formData.password)) {
-      toast({
-        title: "Weak password",
-        description:
-          "Password must be at least 12 characters long and include uppercase, lowercase, numbers, and special symbols.",
-        variant: "destructive",
-      });
-      return;
-    }
-
+    
     if (formData.password !== formData.confirmPassword) {
       toast({
-        title: "Password mismatch",
+        title: "Password mismatch", 
         description: "Passwords do not match",
         variant: "destructive",
       });
@@ -94,8 +74,7 @@ const SignUp = () => {
       } else {
         toast({
           title: "Check your email!",
-          description:
-            "We've sent you a verification link to complete your registration.",
+          description: "We've sent you a verification link to complete your registration.",
         });
         navigate("/signin");
       }
@@ -113,7 +92,7 @@ const SignUp = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary/20 to-accent/10 p-4">
       <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZjZkMDAiIGZpbGwtb3BhY2l0eT0iMC4wMyI+PGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iNCIvPjwvZz48L2c+PC9zdmc+')] opacity-40"></div>
-
+      
       <Card className="w-full max-w-md mx-auto backdrop-blur-sm bg-card/95 shadow-2xl border-0 animate-fade-in">
         <CardHeader className="text-center pb-6">
           <div className="mx-auto w-16 h-16 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center mb-4 shadow-lg">
