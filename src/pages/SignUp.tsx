@@ -40,7 +40,6 @@ const SignUp = () => {
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // ✅ Strong password validation
     const strongPasswordRegex =
       /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{12,}$/;
 
@@ -111,18 +110,14 @@ const SignUp = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center relative p-4">
-      {/* Background Image */}
-      <img
-        src="/image/signup.jpg"
-        alt="Sign up background"
-        className="absolute inset-0 w-full h-full object-cover opacity-60 -z-10"
-      />
+    <div
+      className="min-h-screen flex items-center justify-center p-4 bg-cover bg-center relative"
+      style={{ backgroundImage: "url('/image/signup.jpg')" }}
+    >
+      {/* Dark overlay to improve readability */}
+      <div className="absolute inset-0 bg-black/40"></div>
 
-      {/* Overlay to ensure text is visible */}
-      <div className="absolute inset-0 bg-gradient-to-br from-background/70 via-secondary/40 to-accent/30 -z-10"></div>
-
-      <Card className="w-full max-w-md mx-auto backdrop-blur-sm bg-card/95 shadow-2xl border-0 animate-fade-in">
+      <Card className="w-full max-w-md mx-auto backdrop-blur-sm bg-card/95 shadow-2xl border-0 animate-fade-in relative z-10">
         <CardHeader className="text-center pb-6">
           <div className="mx-auto w-16 h-16 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center mb-4 shadow-lg">
             <Palmtree className="w-8 h-8 text-white" />
@@ -280,4 +275,3 @@ const SignUp = () => {
 };
 
 export default SignUp;
-
