@@ -1,24 +1,28 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { User, LogOut, MapPin, Calendar, Users, Star, Trash2 } from "lucide-react";
-import type { User as SupabaseUser } from '@supabase/supabase-js';
+import { User, LogOut, MapPin, Calendar, Users, Star, Trash2, Navigation } from "lucide-react";
+import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 const Dashboard = () => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [destinations, setDestinations] = useState<string[]>([]);
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
 
-  // 🔹 For destinations
-  const [query, setQuery] = useState("");
-  const [suggestions, setSuggestions] = useState<any[]>([]);
-  const [destinations, setDestinations] = useState<any[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstance = useRef<google.maps.Map | null>(null);
+  const markerRef = useRef<google.maps.Marker | null>(null);
 
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  // ✅ Authentication
   useEffect(() => {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -33,13 +37,76 @@ const Dashboard = () => {
     getUser();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT' || !session) {
+      if (event === "SIGNED_OUT" || !session) {
         navigate("/signin");
       }
     });
 
     return () => subscription.unsubscribe();
   }, [navigate]);
+
+  // ✅ Google Places Autocomplete
+  useEffect(() => {
+    if (window.google && inputRef.current) {
+      autocompleteRef.current = new google.maps.places.Autocomplete(inputRef.current, {
+        types: ["geocode", "establishment"],
+      });
+
+      autocompleteRef.current.addListener("place_changed", () => {
+        const place = autocompleteRef.current?.getPlace();
+        if (place && place.formatted_address) {
+          setDestinations((prev) => [...prev, place.formatted_address!]);
+        }
+      });
+    }
+  }, []);
+
+  // ✅ Real-time location + Google Map
+  useEffect(() => {
+    if ("geolocation" in navigator) {
+      const watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          setLocation({ lat, lng });
+
+          // Init map once
+          if (mapRef.current && !mapInstance.current && window.google) {
+            mapInstance.current = new google.maps.Map(mapRef.current, {
+              center: { lat, lng },
+              zoom: 15,
+            });
+            markerRef.current = new google.maps.Marker({
+              position: { lat, lng },
+              map: mapInstance.current,
+              title: "You are here",
+            });
+          }
+
+          // Update marker position
+          if (markerRef.current) {
+            markerRef.current.setPosition({ lat, lng });
+          }
+
+          // Recenter map smoothly
+          if (mapInstance.current) {
+            mapInstance.current.panTo({ lat, lng });
+          }
+        },
+        (err) => {
+          console.error("Error getting location:", err);
+          toast({
+            title: "Location Error",
+            description: err.message,
+            variant: "destructive",
+          });
+        },
+        { enableHighAccuracy: true, maximumAge: 0 }
+      );
+
+      return () => navigator.geolocation.clearWatch(watchId);
+    }
+  }, [toast]);
 
   const handleSignOut = async () => {
     const { error } = await supabase.auth.signOut();
@@ -56,30 +123,6 @@ const Dashboard = () => {
       });
       navigate("/signin");
     }
-  };
-
-  // 🔹 Fetch suggestions from OpenStreetMap Nominatim
-  const fetchSuggestions = async (value: string) => {
-    setQuery(value);
-    if (value.length < 3) {
-      setSuggestions([]);
-      return;
-    }
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}`
-      );
-      const data = await res.json();
-      setSuggestions(data);
-    } catch (err) {
-      console.error("Error fetching location suggestions:", err);
-    }
-  };
-
-  const addDestination = (place: any) => {
-    setDestinations((prev) => [...prev, place]);
-    setSuggestions([]);
-    setQuery("");
   };
 
   const removeDestination = (index: number) => {
@@ -137,7 +180,7 @@ const Dashboard = () => {
                 </div>
                 <div>
                   <CardTitle className="text-3xl font-bold">
-                    Welcome, {user.user_metadata?.full_name || user.email?.split('@')[0]}!
+                    Welcome, {user.user_metadata?.full_name || user.email?.split("@")[0]}!
                   </CardTitle>
                   <CardDescription className="text-white/80 text-lg">
                     Ready to explore the wonders of India?
@@ -147,100 +190,44 @@ const Dashboard = () => {
             </CardHeader>
           </Card>
 
-          {/* Quick Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Card className="hover:shadow-lg transition-shadow duration-300">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Destinations</CardTitle>
-                <MapPin className="h-4 w-4 text-muted-foreground" />
+          {/* ✅ Real-Time Location Map */}
+          {location && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-2xl font-bold flex items-center gap-2">
+                  <Navigation className="h-5 w-5 text-primary" /> Your Live Location
+                </CardTitle>
+                <CardDescription>
+                  Tracking your real-time location with Google Maps
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-primary">28</div>
-                <p className="text-xs text-muted-foreground">States & Territories</p>
+                <div
+                  ref={mapRef}
+                  className="w-full h-64 rounded-lg border"
+                ></div>
               </CardContent>
             </Card>
-
-            <Card className="hover:shadow-lg transition-shadow duration-300">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Experiences</CardTitle>
-                <Star className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-accent">1000+</div>
-                <p className="text-xs text-muted-foreground">Amazing experiences</p>
-              </CardContent>
-            </Card>
-
-            <Card className="hover:shadow-lg transition-shadow duration-300">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Travelers</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-secondary-foreground">50M+</div>
-                <p className="text-xs text-muted-foreground">Happy travelers</p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Coming Soon Section */}
-          <Card className="text-center py-12">
-            <CardHeader>
-              <CardTitle className="text-3xl font-bold mb-4">
-                Amazing Features Coming Soon!
-              </CardTitle>
-              <CardDescription className="text-lg max-w-2xl mx-auto">
-                We're working hard to bring you the best travel planning experience for India. 
-                Stay tuned for personalized itineraries, booking management, and much more.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-center space-x-4 text-muted-foreground">
-                <Calendar className="w-6 h-6" />
-                <span>•</span>
-                <MapPin className="w-6 h-6" />
-                <span>•</span>
-                <Star className="w-6 h-6" />
-              </div>
-            </CardContent>
-          </Card>
+          )}
 
           {/* Destinations Section */}
           <Card>
             <CardHeader>
               <CardTitle className="text-2xl font-bold">Plan Your Destinations</CardTitle>
               <CardDescription>
-                Search for locations and add them to your travel list.
+                Search for locations using Google Maps and add them to your travel list.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {/* Search Input */}
-              <div className="relative mb-4">
+              <div className="flex items-center space-x-2 mb-4">
                 <input
+                  ref={inputRef}
                   type="text"
-                  value={query}
-                  onChange={(e) => fetchSuggestions(e.target.value)}
                   placeholder="Search for a location..."
                   className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                 />
-                {/* Suggestions Dropdown */}
-                {suggestions.length > 0 && (
-                  <ul className="absolute z-10 bg-white border rounded-md shadow-md w-full mt-1 max-h-60 overflow-auto">
-                    {suggestions.map((place, index) => (
-                      <li
-                        key={index}
-                        className="px-4 py-2 hover:bg-secondary cursor-pointer flex items-center space-x-2"
-                        onClick={() => addDestination(place)}
-                      >
-                        <MapPin className="w-4 h-4 text-primary" />
-                        <span>{place.display_name}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
               </div>
 
-              {/* Destinations List */}
               {destinations.length > 0 && (
                 <ul className="space-y-2">
                   {destinations.map((dest, index) => (
@@ -248,7 +235,7 @@ const Dashboard = () => {
                       key={index}
                       className="flex justify-between items-center bg-secondary/20 px-4 py-2 rounded-md"
                     >
-                      <span>{dest.display_name}</span>
+                      <span>{dest}</span>
                       <Button
                         variant="ghost"
                         size="icon"
