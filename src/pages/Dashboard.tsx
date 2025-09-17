@@ -31,8 +31,7 @@ const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => 
 
   const a =
     Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-    Math.cos(φ1) * Math.cos(φ2) *
-      Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
 
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c; // in meters
@@ -56,7 +55,8 @@ const Dashboard = () => {
 
   // ✅ Geofence state
   const geofenceStatus = useRef<Record<string, boolean>>({});
-  const GEOFENCE_RADIUS = 500; // meters
+  const geofenceCircles = useRef<Record<string, google.maps.Circle>>({});
+  const GEOFENCE_RADIUS = 5000; // meters
 
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -119,17 +119,40 @@ const Dashboard = () => {
             isFirstLoad.current = false;
           }
 
+          // ✅ Draw geofence circles for destinations
+          if (mapInstance.current) {
+            destinations.forEach((dest) => {
+              if (dest.latitude && dest.longitude) {
+                if (!geofenceCircles.current[dest.id]) {
+                  const circle = new google.maps.Circle({
+                    strokeColor: "#FF0000",
+                    strokeOpacity: 0.8,
+                    strokeWeight: 2,
+                    fillColor: "#FF0000",
+                    fillOpacity: 0.2,
+                    map: mapInstance.current,
+                    center: { lat: dest.latitude, lng: dest.longitude },
+                    radius: GEOFENCE_RADIUS,
+                  });
+                  geofenceCircles.current[dest.id] = circle;
+                }
+              }
+            });
+
+            // ✅ Remove circles for deleted destinations
+            Object.keys(geofenceCircles.current).forEach((id) => {
+              if (!destinations.find((d) => d.id === id)) {
+                geofenceCircles.current[id].setMap(null);
+                delete geofenceCircles.current[id];
+              }
+            });
+          }
+
           // ✅ Check geofences
           if (user && destinations.length > 0) {
             destinations.forEach((dest) => {
               if (dest.latitude && dest.longitude) {
-                const distance = getDistance(
-                  lat,
-                  lng,
-                  dest.latitude,
-                  dest.longitude
-                );
-
+                const distance = getDistance(lat, lng, dest.latitude, dest.longitude);
                 const isInside = distance <= GEOFENCE_RADIUS;
                 const wasInside = geofenceStatus.current[dest.id] || false;
 
