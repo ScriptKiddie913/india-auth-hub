@@ -7,6 +7,8 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
+  console.log('Admin auth function called:', req.method, req.url);
+  
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -17,16 +19,25 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    const { email, password } = await req.json()
+    console.log('Reading request body...');
+    const body = await req.text();
+    console.log('Request body:', body);
+    
+    const { email, password } = JSON.parse(body);
+    console.log('Parsed credentials:', { email, password: '***' });
 
     // Query admin credentials using service role key
+    console.log('Querying admin credentials...');
     const { data: adminData, error } = await supabaseClient
       .from('admin_credentials')
       .select('*')
       .eq('email', email)
       .single()
 
+    console.log('Query result:', { adminData: adminData ? 'found' : 'not found', error });
+
     if (error || !adminData) {
+      console.log('Invalid credentials - user not found');
       return new Response(
         JSON.stringify({ error: 'Invalid credentials' }),
         { 
@@ -36,8 +47,10 @@ serve(async (req) => {
       )
     }
 
-    // Simple password check (in production, use bcrypt)
+    // Simple password check
+    console.log('Checking password...');
     if (adminData.password_hash !== password) {
+      console.log('Invalid credentials - wrong password');
       return new Response(
         JSON.stringify({ error: 'Invalid credentials' }),
         { 
@@ -47,6 +60,7 @@ serve(async (req) => {
       )
     }
 
+    console.log('Login successful');
     // Return success with admin data
     return new Response(
       JSON.stringify({ 
@@ -64,6 +78,7 @@ serve(async (req) => {
     )
 
   } catch (error) {
+    console.error('Error in admin auth:', error);
     return new Response(
       JSON.stringify({ error: error.message }),
       { 

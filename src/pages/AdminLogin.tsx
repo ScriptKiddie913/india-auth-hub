@@ -20,6 +20,8 @@ const AdminLogin = () => {
     setLoading(true);
 
     try {
+      console.log('Attempting admin login for:', email);
+      
       // Call admin authentication edge function
       const response = await fetch(`https://xzgwtdqtigmlihkyvblv.supabase.co/functions/v1/admin-auth`, {
         method: 'POST',
@@ -29,23 +31,26 @@ const AdminLogin = () => {
         body: JSON.stringify({ email, password }),
       });
 
+      console.log('Response status:', response.status);
       const data = await response.json();
+      console.log('Response data:', data);
 
       if (data.success) {
         localStorage.setItem("adminAuth", JSON.stringify(data.admin));
         toast({
           title: "Admin Access Granted",
-          description: `Welcome ${data.admin.full_name}`,
+          description: `Welcome ${data.admin.full_name || data.admin.email}`,
         });
         navigate("/admin-dashboard");
       } else {
         toast({
           title: "Access Denied",
-          description: "Invalid admin credentials.",
+          description: data.error || "Invalid admin credentials.",
           variant: "destructive",
         });
       }
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Admin login error:', error);
       toast({
         title: "Error",
         description: "Failed to authenticate. Please try again.",

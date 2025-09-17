@@ -1,1 +1,8 @@
 project_id = "xzgwtdqtigmlihkyvblv"
+
+[auth]
+enabled = true
+external_providers = []
+
+[functions.admin-auth]
+verify_jwt = false
