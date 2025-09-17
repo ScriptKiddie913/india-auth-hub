@@ -7,6 +7,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { Shield, Mail, Lock, Eye, EyeOff } from "lucide-react";
 
+const ADMIN_EMAIL = "admin@example.com";
+const ADMIN_PASSWORD = "supersecure123";
+
 const AdminLogin = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -19,17 +22,8 @@ const AdminLogin = () => {
     e.preventDefault();
     setLoading(true);
 
-    try {
-      const res = await fetch("/api/admin-login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        // ⚡ Instead of plain flag, use JWT/session in real setup
+    setTimeout(() => {
+      if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
         localStorage.setItem("adminAuth", "true");
 
         toast({
@@ -40,19 +34,12 @@ const AdminLogin = () => {
       } else {
         toast({
           title: "Access Denied",
-          description: data.error || "Invalid admin credentials.",
+          description: "Invalid admin credentials.",
           variant: "destructive",
         });
       }
-    } catch (err: any) {
-      toast({
-        title: "Error",
-        description: err.message,
-        variant: "destructive",
-      });
-    } finally {
       setLoading(false);
-    }
+    }, 800); // add slight delay for UX
   };
 
   return (
@@ -73,9 +60,7 @@ const AdminLogin = () => {
         <CardContent className="space-y-6">
           <form onSubmit={handleAdminLogin} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-sm font-medium">
-                Admin Email
-              </Label>
+              <Label htmlFor="email">Admin Email</Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -84,16 +69,14 @@ const AdminLogin = () => {
                   placeholder="admin@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="pl-10 h-12 border-muted focus:border-destructive transition-colors"
+                  className="pl-10 h-12"
                   required
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-sm font-medium">
-                Admin Password
-              </Label>
+              <Label htmlFor="password">Admin Password</Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -102,13 +85,13 @@ const AdminLogin = () => {
                   placeholder="Enter admin password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="pl-10 pr-10 h-12 border-muted focus:border-destructive transition-colors"
+                  className="pl-10 pr-10 h-12"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-3 h-4 w-4 text-muted-foreground hover:text-foreground transition-colors"
+                  className="absolute right-3 top-3 h-4 w-4 text-muted-foreground hover:text-foreground"
                 >
                   {showPassword ? <EyeOff /> : <Eye />}
                 </button>
