@@ -1,11 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { AlertTriangle, LogOut, MapPin, Shield, User, Clock, Plus, Trash2 } from "lucide-react";
@@ -42,6 +41,22 @@ interface Destination {
   created_at: string;
 }
 
+// ✅ Utility: haversine distance (meters)
+function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371000;
+  const toRad = (x: number) => (x * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+const GEOFENCE_RADIUS = 500; // meters
+
 const Dashboard = () => {
   const [user, setUser] = useState<AppUser | null>(null);
   const [userLocations, setUserLocations] = useState<UserLocation[]>([]);
@@ -54,8 +69,16 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  // ✅ Refs for map + markers + circles
+  const mapRef = useRef<HTMLDivElement | null>(null);
+  const mapInstance = useRef<google.maps.Map | null>(null);
+  const markerRef = useRef<google.maps.Marker | null>(null);
+  const geofenceCircles = useRef<Record<string, google.maps.Circle>>({});
+  const geofenceStatus = useRef<Record<string, boolean>>({});
+  const isFirstLoad = useRef(true);
+
+  // --- AUTH ---
   useEffect(() => {
-    // Check authentication
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
@@ -65,12 +88,10 @@ const Dashboard = () => {
       setUser(session.user);
       setLoading(false);
     };
-
     checkAuth();
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT' || !session) {
+      if (event === "SIGNED_OUT" || !session) {
         navigate("/signin");
       } else {
         setUser(session.user);
@@ -80,9 +101,9 @@ const Dashboard = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
+  // --- Fetch data ---
   useEffect(() => {
     if (!user) return;
-    
     fetchDestinations();
     fetchUserLocations();
     fetchPanicAlerts();
@@ -90,204 +111,169 @@ const Dashboard = () => {
   }, [user]);
 
   const fetchDestinations = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("destinations")
-        .select("*")
-        .eq("user_id", user?.id)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      setDestinations(data || []);
-    } catch (error: any) {
-      toast({
-        title: "Error fetching destinations",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
+    const { data, error } = await supabase
+      .from("destinations")
+      .select("*")
+      .eq("user_id", user?.id)
+      .order("created_at", { ascending: false });
+    if (!error) setDestinations(data || []);
   };
 
   const fetchUserLocations = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("user_locations")
-        .select("*")
-        .eq("user_id", user?.id)
-        .order("created_at", { ascending: false })
-        .limit(10);
-
-      if (error) throw error;
-      setUserLocations(data || []);
-    } catch (error: any) {
-      toast({
-        title: "Error fetching user locations",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
+    const { data, error } = await supabase
+      .from("user_locations")
+      .select("*")
+      .eq("user_id", user?.id)
+      .order("created_at", { ascending: false })
+      .limit(10);
+    if (!error) setUserLocations(data || []);
   };
 
   const fetchPanicAlerts = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("panic_alerts")
-        .select("*")
-        .eq("user_id", user?.id)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      setPanicAlerts(data || []);
-    } catch (error: any) {
-      toast({
-        title: "Error fetching panic alerts",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
+    const { data, error } = await supabase
+      .from("panic_alerts")
+      .select("*")
+      .eq("user_id", user?.id)
+      .order("created_at", { ascending: false });
+    if (!error) setPanicAlerts(data || []);
   };
 
+  // --- Location tracking + Geofencing ---
   const startLocationTracking = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-          setCurrentLocation({ latitude, longitude });
-          saveUserLocation(latitude, longitude);
+    if ("geolocation" in navigator) {
+      const watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          setCurrentLocation({ latitude: lat, longitude: lng });
+          saveUserLocation(lat, lng);
+
+          // Init map
+          if (mapRef.current && !mapInstance.current && window.google) {
+            mapInstance.current = new google.maps.Map(mapRef.current, {
+              center: { lat, lng },
+              zoom: 15,
+            });
+            markerRef.current = new google.maps.Marker({
+              position: { lat, lng },
+              map: mapInstance.current,
+              title: "You are here",
+            });
+          }
+
+          // Update marker
+          if (markerRef.current) {
+            markerRef.current.setPosition({ lat, lng });
+          }
+          if (mapInstance.current && isFirstLoad.current) {
+            mapInstance.current.panTo({ lat, lng });
+            isFirstLoad.current = false;
+          }
+
+          // ✅ Draw circles
+          if (mapInstance.current) {
+            destinations.forEach((dest) => {
+              if (dest.latitude && dest.longitude) {
+                if (!geofenceCircles.current[dest.id]) {
+                  const circle = new google.maps.Circle({
+                    strokeColor: "#00FF00", // green
+                    strokeOpacity: 0.8,
+                    strokeWeight: 2,
+                    fillColor: "#00FF00",
+                    fillOpacity: 0.2,
+                    map: mapInstance.current,
+                    center: { lat: dest.latitude, lng: dest.longitude },
+                    radius: GEOFENCE_RADIUS,
+                  });
+                  geofenceCircles.current[dest.id] = circle;
+                }
+              }
+            });
+
+            // Remove circles for deleted
+            Object.keys(geofenceCircles.current).forEach((id) => {
+              if (!destinations.find((d) => d.id === id)) {
+                geofenceCircles.current[id].setMap(null);
+                delete geofenceCircles.current[id];
+              }
+            });
+          }
+
+          // ✅ Check geofence entry/exit
+          if (user && destinations.length > 0) {
+            destinations.forEach((dest) => {
+              if (dest.latitude && dest.longitude) {
+                const distance = getDistance(lat, lng, dest.latitude, dest.longitude);
+                const isInside = distance <= GEOFENCE_RADIUS;
+                const wasInside = geofenceStatus.current[dest.id] || false;
+
+                if (isInside && !wasInside) {
+                  toast({
+                    title: "📍 Geofence Entered",
+                    description: `You entered the area of ${dest.name}`,
+                  });
+                  geofenceStatus.current[dest.id] = true;
+                }
+                if (!isInside && wasInside) {
+                  toast({
+                    title: "🚪 Geofence Exited",
+                    description: `You left the area of ${dest.name}`,
+                    variant: "destructive",
+                  });
+                  geofenceStatus.current[dest.id] = false;
+                }
+              }
+            });
+          }
         },
-        (error) => {
-          console.error("Error getting location:", error);
-          toast({
-            title: "Location Error",
-            description: "Unable to get your current location",
-            variant: "destructive",
-          });
-        }
+        (err) => console.error("Location error", err),
+        { enableHighAccuracy: true, maximumAge: 0 }
       );
-
-      // Update location every 30 seconds
-      const locationInterval = setInterval(() => {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            const { latitude, longitude } = position.coords;
-            setCurrentLocation({ latitude, longitude });
-            saveUserLocation(latitude, longitude);
-          },
-          (error) => console.error("Error updating location:", error)
-        );
-      }, 30000);
-
-      return () => clearInterval(locationInterval);
+      return () => navigator.geolocation.clearWatch(watchId);
     }
   };
 
   const saveUserLocation = async (latitude: number, longitude: number) => {
-    try {
-      const { error } = await supabase
-        .from("user_locations")
-        .insert([{ user_id: user?.id, latitude, longitude }]);
-
-      if (error) throw error;
-    } catch (error: any) {
-      console.error("Error saving location:", error);
-    }
+    await supabase.from("user_locations").insert([{ user_id: user?.id, latitude, longitude }]);
   };
 
+  // --- Panic Alert ---
   const handlePanicAlert = async () => {
     if (!currentLocation) {
-      toast({
-        title: "Location Required",
-        description: "Please enable location services to send panic alert",
-        variant: "destructive",
-      });
+      toast({ title: "Location Required", description: "Enable GPS", variant: "destructive" });
       return;
     }
-
-    try {
-      const { error } = await supabase
-        .from("panic_alerts")
-        .insert([{
-          user_id: user?.id,
-          message: panicMessage || "Emergency assistance needed",
-          latitude: currentLocation.latitude,
-          longitude: currentLocation.longitude,
-          status: "active"
-        }]);
-
-      if (error) throw error;
-
-      toast({
-        title: "🚨 Panic Alert Sent!",
-        description: "Emergency services have been notified of your location",
-        variant: "destructive",
-      });
-
-      setPanicMessage("");
-      fetchPanicAlerts();
-    } catch (error: any) {
-      toast({
-        title: "Error sending panic alert",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
+    await supabase.from("panic_alerts").insert([{
+      user_id: user?.id,
+      message: panicMessage || "Emergency assistance needed",
+      latitude: currentLocation.latitude,
+      longitude: currentLocation.longitude,
+      status: "active",
+    }]);
+    toast({ title: "🚨 Panic Alert Sent!", description: "Authorities notified", variant: "destructive" });
+    setPanicMessage("");
+    fetchPanicAlerts();
   };
 
+  // --- Destinations ---
   const addDestination = async () => {
     if (!newDestination.trim()) return;
-
-    try {
-      const { error } = await supabase
-        .from("destinations")
-        .insert([{
-          user_id: user?.id,
-          name: newDestination.trim(),
-          latitude: currentLocation?.latitude || null,
-          longitude: currentLocation?.longitude || null
-        }]);
-
-      if (error) throw error;
-
-      toast({
-        title: "Destination Added",
-        description: `${newDestination} has been added to your destinations`,
-      });
-
-      setNewDestination("");
-      fetchDestinations();
-    } catch (error: any) {
-      toast({
-        title: "Error adding destination",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
+    await supabase.from("destinations").insert([{
+      user_id: user?.id,
+      name: newDestination.trim(),
+      latitude: currentLocation?.latitude || null,
+      longitude: currentLocation?.longitude || null,
+    }]);
+    setNewDestination("");
+    fetchDestinations();
   };
 
   const deleteDestination = async (id: string) => {
-    try {
-      const { error } = await supabase
-        .from("destinations")
-        .delete()
-        .eq("id", id);
-
-      if (error) throw error;
-
-      toast({
-        title: "Destination Removed",
-        description: "Destination has been deleted",
-      });
-
-      fetchDestinations();
-    } catch (error: any) {
-      toast({
-        title: "Error deleting destination",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
+    await supabase.from("destinations").delete().eq("id", id);
+    fetchDestinations();
   };
 
+  // --- Logout ---
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate("/");
@@ -305,223 +291,73 @@ const Dashboard = () => {
     <div className="min-h-screen bg-gradient-to-br from-background via-secondary/20 to-accent/10">
       {/* Header */}
       <header className="border-b bg-card/95 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="w-10 h-10 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center">
-                <User className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                  Tourist Dashboard
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  Welcome, {user?.email}
-                </p>
-              </div>
-            </div>
-            <Button
-              onClick={handleLogout}
-              variant="outline"
-              className="flex items-center space-x-2"
-            >
-              <LogOut className="w-4 h-4" />
-              <span>Logout</span>
-            </Button>
+        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <User className="w-6 h-6" />
+            <h1 className="text-xl font-bold">Tourist Dashboard</h1>
           </div>
+          <Button onClick={handleLogout} variant="outline">
+            <LogOut className="w-4 h-4 mr-2" /> Logout
+          </Button>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
-        <div className="grid gap-6">
-          {/* Emergency Panic Button */}
-          <Card className="border-destructive">
-            <CardHeader>
-              <CardTitle className="text-2xl font-bold flex items-center gap-2 text-destructive">
-                <AlertTriangle className="h-6 w-6" />
-                Emergency Alert
-              </CardTitle>
-              <CardDescription>
-                Send an immediate panic alert to emergency services with your current location
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="panic-message">Emergency Message (Optional)</Label>
-                <Input
-                  id="panic-message"
-                  placeholder="Describe your emergency..."
-                  value={panicMessage}
-                  onChange={(e) => setPanicMessage(e.target.value)}
-                />
-              </div>
-              <Button
-                onClick={handlePanicAlert}
-                className="w-full bg-destructive hover:bg-destructive/90 text-white font-bold py-6 text-lg"
-                size="lg"
-              >
-                <AlertTriangle className="w-5 h-5 mr-2" />
-                SEND PANIC ALERT
-              </Button>
-            </CardContent>
-          </Card>
+      <main className="container mx-auto px-4 py-6 grid gap-6">
+        {/* ✅ Map */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Live Map with Geofencing</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div ref={mapRef} className="w-full h-[400px] rounded-lg border" />
+          </CardContent>
+        </Card>
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Destinations</CardTitle>
-                <MapPin className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{destinations.length}</div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Active Alerts</CardTitle>
-                <AlertTriangle className="h-4 w-4 text-destructive" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-destructive">
-                  {panicAlerts.filter(a => a.status === 'active').length}
-                </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Location Updates</CardTitle>
-                <Clock className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{userLocations.length}</div>
-              </CardContent>
-            </Card>
-          </div>
+        {/* Panic Alert */}
+        <Card className="border-destructive">
+          <CardHeader>
+            <CardTitle className="flex gap-2 items-center text-destructive">
+              <AlertTriangle /> Emergency Alert
+            </CardTitle>
+            <CardDescription>Send an immediate alert</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Input
+              placeholder="Describe your emergency..."
+              value={panicMessage}
+              onChange={(e) => setPanicMessage(e.target.value)}
+            />
+            <Button onClick={handlePanicAlert} className="bg-destructive text-white w-full">
+              <AlertTriangle className="mr-2" /> SEND ALERT
+            </Button>
+          </CardContent>
+        </Card>
 
-          {/* Destinations Management */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-2xl font-bold flex items-center gap-2">
-                <MapPin className="h-6 w-6 text-primary" />
-                My Destinations
-              </CardTitle>
-              <CardDescription>
-                Manage your travel destinations
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Add a new destination..."
-                  value={newDestination}
-                  onChange={(e) => setNewDestination(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && addDestination()}
-                />
-                <Button onClick={addDestination}>
-                  <Plus className="h-4 w-4" />
+        {/* Destinations */}
+        <Card>
+          <CardHeader>
+            <CardTitle>My Destinations</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Add new destination..."
+                value={newDestination}
+                onChange={(e) => setNewDestination(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && addDestination()}
+              />
+              <Button onClick={addDestination}><Plus /></Button>
+            </div>
+            {destinations.map((d) => (
+              <div key={d.id} className="flex justify-between p-2 border rounded">
+                <span>{d.name}</span>
+                <Button size="sm" variant="ghost" onClick={() => deleteDestination(d.id)}>
+                  <Trash2 className="w-4 h-4" />
                 </Button>
               </div>
-              
-              {destinations.length === 0 ? (
-                <p className="text-muted-foreground text-center py-8">No destinations added yet</p>
-              ) : (
-                <div className="space-y-2">
-                  {destinations.map((destination) => (
-                    <div
-                      key={destination.id}
-                      className="flex items-center justify-between p-3 rounded-lg border bg-card"
-                    >
-                      <div>
-                        <div className="font-semibold">{destination.name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          Added: {new Date(destination.created_at).toLocaleDateString()}
-                        </div>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => deleteDestination(destination.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Current Location */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-2xl font-bold flex items-center gap-2">
-                <Shield className="h-6 w-6 text-primary" />
-                Current Location
-              </CardTitle>
-              <CardDescription>
-                Your real-time location for safety monitoring
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {currentLocation ? (
-                <div className="space-y-2">
-                  <p><strong>Latitude:</strong> {currentLocation.latitude.toFixed(6)}</p>
-                  <p><strong>Longitude:</strong> {currentLocation.longitude.toFixed(6)}</p>
-                  <p className="text-sm text-muted-foreground">
-                    Location is being tracked for your safety and updated every 30 seconds
-                  </p>
-                </div>
-              ) : (
-                <p className="text-muted-foreground">Location not available</p>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Recent Panic Alerts */}
-          {panicAlerts.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-2xl font-bold flex items-center gap-2">
-                  <AlertTriangle className="h-6 w-6 text-destructive" />
-                  Your Recent Alerts
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {panicAlerts.slice(0, 5).map((alert) => (
-                    <div
-                      key={alert.id}
-                      className={`p-4 rounded-lg border ${
-                        alert.status === 'active' ? 'border-destructive bg-destructive/5' : 'border-muted'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Badge variant={alert.status === 'active' ? 'destructive' : 'secondary'}>
-                              {alert.status}
-                            </Badge>
-                            <span className="text-sm text-muted-foreground">
-                              {new Date(alert.created_at).toLocaleString()}
-                            </span>
-                          </div>
-                          <p className="text-sm mb-2">{alert.message}</p>
-                          <div className="text-sm text-muted-foreground">
-                            Location: {alert.latitude.toFixed(6)}, {alert.longitude.toFixed(6)}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
+            ))}
+          </CardContent>
+        </Card>
       </main>
     </div>
   );
