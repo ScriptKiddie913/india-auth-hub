@@ -88,7 +88,16 @@ const AdminDashboard = () => {
     try {
       const { data, error } = await supabase
         .from("user_locations")
-        .select("*")
+        .select(`
+          id,
+          user_id,
+          latitude,
+          longitude,
+          created_at,
+          profiles (
+            full_name
+          )
+        `)
         .order("created_at", { ascending: false })
         .limit(50);
 
@@ -107,7 +116,18 @@ const AdminDashboard = () => {
     try {
       const { data, error } = await supabase
         .from("panic_alerts")
-        .select("*")
+        .select(`
+          id,
+          user_id,
+          message,
+          latitude,
+          longitude,
+          status,
+          created_at,
+          profiles (
+            full_name
+          )
+        `)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -261,7 +281,7 @@ const AdminDashboard = () => {
                               {alert.status}
                             </Badge>
                             <span className="font-semibold">
-                              User ID: {alert.user_id}
+                              {alert.profiles?.full_name || "Unknown User"}
                             </span>
                             <span className="text-sm text-muted-foreground">
                               {new Date(alert.created_at).toLocaleString()}
@@ -319,7 +339,7 @@ const AdminDashboard = () => {
                       <div className="flex items-center justify-between">
                         <div>
                           <div className="font-semibold">
-                            User ID: {location.user_id}
+                            {location.profiles?.full_name || "Unknown User"}
                           </div>
                           <div className="text-sm text-muted-foreground">
                             {new Date(location.created_at).toLocaleString()}
