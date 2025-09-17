@@ -125,10 +125,10 @@ const Dashboard = () => {
               if (dest.latitude && dest.longitude) {
                 if (!geofenceCircles.current[dest.id]) {
                   const circle = new google.maps.Circle({
-                    strokeColor: "#FF0000",
+                    strokeColor: "#00FF00",
                     strokeOpacity: 0.8,
                     strokeWeight: 2,
-                    fillColor: "#FF0000",
+                    fillColor: "#00FF00",
                     fillOpacity: 0.2,
                     map: mapInstance.current,
                     center: { lat: dest.latitude, lng: dest.longitude },
