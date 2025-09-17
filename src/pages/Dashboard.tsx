@@ -10,15 +10,7 @@ import {
 } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import {
-  User,
-  LogOut,
-  MapPin,
-  Trash2,
-  Navigation,
-  AlertTriangle,
-  Send,
-} from "lucide-react";
+import { User, LogOut, MapPin, Trash2, Navigation } from "lucide-react";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 interface Destination {
@@ -28,9 +20,9 @@ interface Destination {
   longitude?: number;
 }
 
-// ✅ Haversine formula
+// ✅ Haversine formula to calculate distance (in meters)
 const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-  const R = 6371e3;
+  const R = 6371e3; // Earth radius in meters
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const φ1 = toRad(lat1);
   const φ2 = toRad(lat2);
@@ -42,7 +34,7 @@ const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => 
     Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
 
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+  return R * c; // in meters
 };
 
 const Dashboard = () => {
@@ -52,18 +44,19 @@ const Dashboard = () => {
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(
     null
   );
+
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<any[]>([]);
-  const [message, setMessage] = useState("");
 
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<google.maps.Map | null>(null);
   const markerRef = useRef<google.maps.Marker | null>(null);
   const isFirstLoad = useRef(true);
 
+  // ✅ Geofence state
   const geofenceStatus = useRef<Record<string, boolean>>({});
   const geofenceCircles = useRef<Record<string, google.maps.Circle>>({});
-  const GEOFENCE_RADIUS = 5000;
+  const GEOFENCE_RADIUS = 5000; // meters
 
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -93,7 +86,7 @@ const Dashboard = () => {
     return () => data.subscription.unsubscribe();
   }, [navigate]);
 
-  // ✅ Real-time location tracking
+  // ✅ Real-time location tracking + Google Map + Geofencing
   useEffect(() => {
     if ("geolocation" in navigator) {
       const watchId = navigator.geolocation.watchPosition(
@@ -102,6 +95,7 @@ const Dashboard = () => {
           const lng = pos.coords.longitude;
           setLocation({ lat, lng });
 
+          // Initialize map once
           if (mapRef.current && !mapInstance.current && window.google) {
             mapInstance.current = new google.maps.Map(mapRef.current, {
               center: { lat, lng },
@@ -114,13 +108,18 @@ const Dashboard = () => {
             });
           }
 
-          if (markerRef.current) markerRef.current.setPosition({ lat, lng });
+          // Update marker
+          if (markerRef.current) {
+            markerRef.current.setPosition({ lat, lng });
+          }
 
+          // Only auto-pan on first load
           if (mapInstance.current && isFirstLoad.current) {
             mapInstance.current.panTo({ lat, lng });
             isFirstLoad.current = false;
           }
 
+          // ✅ Draw geofence circles for destinations
           if (mapInstance.current) {
             destinations.forEach((dest) => {
               if (dest.latitude && dest.longitude) {
@@ -140,6 +139,7 @@ const Dashboard = () => {
               }
             });
 
+            // ✅ Remove circles for deleted destinations
             Object.keys(geofenceCircles.current).forEach((id) => {
               if (!destinations.find((d) => d.id === id)) {
                 geofenceCircles.current[id].setMap(null);
@@ -148,15 +148,11 @@ const Dashboard = () => {
             });
           }
 
+          // ✅ Check geofences
           if (user && destinations.length > 0) {
             destinations.forEach((dest) => {
               if (dest.latitude && dest.longitude) {
-                const distance = getDistance(
-                  lat,
-                  lng,
-                  dest.latitude,
-                  dest.longitude
-                );
+                const distance = getDistance(lat, lng, dest.latitude, dest.longitude);
                 const isInside = distance <= GEOFENCE_RADIUS;
                 const wasInside = geofenceStatus.current[dest.id] || false;
 
@@ -194,7 +190,7 @@ const Dashboard = () => {
     }
   }, [toast, destinations, user]);
 
-  // ✅ Fetch destinations
+  // ✅ Fetch destinations from Supabase
   const fetchDestinations = async (userId: string) => {
     try {
       const { data, error } = await supabase
@@ -223,54 +219,79 @@ const Dashboard = () => {
         variant: "destructive",
       });
     } else {
+      toast({
+        title: "Signed out successfully",
+        description: "Come back soon!",
+      });
       navigate("/signin");
     }
   };
 
-  // ✅ Panic button
-  const handlePanic = async () => {
+  // ✅ Fetch location suggestions from OpenStreetMap
+  const fetchSuggestions = async (value: string) => {
+    setQuery(value);
+    if (value.length < 3) {
+      setSuggestions([]);
+      return;
+    }
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+          value
+        )}`
+      );
+      const data = await res.json();
+      setSuggestions(data);
+    } catch (err) {
+      console.error("Error fetching location suggestions:", err);
+    }
+  };
+
+  // ✅ Add destination
+  const addDestination = async (place: any) => {
     if (!user) return;
     try {
-      const { error } = await supabase.from("alerts").insert({
+      const { error } = await supabase.from("destinations").insert({
         user_id: user.id,
-        message: "🚨 Panic Alert! User needs help.",
-        latitude: location?.lat,
-        longitude: location?.lng,
+        name: place.display_name,
+        latitude: parseFloat(place.lat),
+        longitude: parseFloat(place.lon),
       });
       if (error) throw error;
+      await fetchDestinations(user.id);
+      setQuery("");
+      setSuggestions([]);
       toast({
-        title: "🚨 Panic Alert Sent",
-        description: "Admin has been notified with your location.",
-        variant: "destructive",
+        title: "Destination added",
+        description: "Successfully added to your travel list!",
       });
     } catch (error: any) {
       toast({
-        title: "Error sending panic alert",
+        title: "Error adding destination",
         description: error.message,
         variant: "destructive",
       });
     }
   };
 
-  // ✅ Send message
-  const sendMessage = async () => {
-    if (!user || !message.trim()) return;
+  // ✅ Remove destination
+  const removeDestination = async (destinationId: string) => {
     try {
-      const { error } = await supabase.from("messages").insert({
-        user_id: user.id,
-        message,
-        latitude: location?.lat,
-        longitude: location?.lng,
-      });
+      const { error } = await supabase
+        .from("destinations")
+        .delete()
+        .eq("id", destinationId);
       if (error) throw error;
-      setMessage("");
+      setDestinations((prev) =>
+        prev.filter((dest) => dest.id !== destinationId)
+      );
       toast({
-        title: "Message sent",
-        description: "Your message was delivered to Admin.",
+        title: "Destination removed",
+        description: "Removed from your travel list!",
       });
     } catch (error: any) {
       toast({
-        title: "Error sending message",
+        title: "Error removing destination",
         description: error.message,
         variant: "destructive",
       });
@@ -279,7 +300,7 @@ const Dashboard = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-black/40">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary/20 to-accent/10">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
       </div>
     );
@@ -288,17 +309,23 @@ const Dashboard = () => {
   if (!user) return null;
 
   return (
-    <div
-      className="min-h-screen bg-cover bg-center bg-fixed"
-      style={{ backgroundImage: "url('/mountain bg.png')" }}
-    >
-      <div className="min-h-screen bg-black/40">
-        {/* Header */}
-        <header className="border-b bg-card/95 backdrop-blur-sm sticky top-0 z-50">
-          <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+    <div className="min-h-screen bg-gradient-to-br from-background via-secondary/20 to-accent/10">
+      {/* Header */}
+      <header className="border-b bg-card/95 backdrop-blur-sm sticky top-0 z-50">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <MapPin className="w-6 h-6 text-primary" />
-              <h1 className="text-2xl font-bold text-white">Incredible India</h1>
+              <div className="w-10 h-10 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center">
+                <MapPin className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                  Incredible India
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  Tourism Dashboard
+                </p>
+              </div>
             </div>
             <Button
               onClick={handleSignOut}
@@ -309,34 +336,40 @@ const Dashboard = () => {
               <span>Sign Out</span>
             </Button>
           </div>
-        </header>
+        </div>
+      </header>
 
-        {/* Main */}
-        <main className="container mx-auto px-4 py-8 space-y-6">
-          {/* Welcome */}
+      {/* Main Content */}
+      <main className="container mx-auto px-4 py-8">
+        <div className="grid gap-6">
+          {/* Welcome Section */}
           <Card className="bg-gradient-to-r from-primary to-accent text-white border-0 shadow-xl">
-            <CardHeader>
-              <CardTitle className="text-3xl font-bold">
-                Welcome,{" "}
-                {user.user_metadata?.full_name || user.email?.split("@")[0]}!
-              </CardTitle>
-              <CardDescription className="text-white/80">
-                Ready to explore the wonders of India?
-              </CardDescription>
+            <CardHeader className="pb-6">
+              <div className="flex items-center space-x-4">
+                <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
+                  <User className="w-8 h-8" />
+                </div>
+                <div>
+                  <CardTitle className="text-3xl font-bold">
+                    Welcome, {user.user_metadata?.full_name || user.email?.split("@")[0]}!
+                  </CardTitle>
+                  <CardDescription className="text-white/80 text-lg">
+                    Ready to explore the wonders of India?
+                  </CardDescription>
+                </div>
+              </div>
             </CardHeader>
           </Card>
 
-          {/* Location Map */}
+          {/* ✅ Real-Time Location Map */}
           {location && (
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-2xl font-bold">
-                  <Navigation className="h-5 w-5 text-primary" /> Your Live
-                  Location
+                <CardTitle className="text-2xl font-bold flex items-center gap-2">
+                  <Navigation className="h-5 w-5 text-primary" /> Your Live Location
                 </CardTitle>
                 <CardDescription>
-                  Latitude: {location.lat.toFixed(6)}, Longitude:{" "}
-                  {location.lng.toFixed(6)}
+                  Latitude: {location.lat.toFixed(6)}, Longitude: {location.lng.toFixed(6)}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -345,39 +378,62 @@ const Dashboard = () => {
             </Card>
           )}
 
-          {/* Message Section */}
+          {/* ✅ Destinations Section with OSM Search */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-2xl font-bold">
-                Send a Message to Admin
-              </CardTitle>
-              <CardDescription>Share your updates or concerns</CardDescription>
+              <CardTitle className="text-2xl font-bold">Plan Your Destinations</CardTitle>
+              <CardDescription>
+                Search for locations using OpenStreetMap and add them to your travel list.
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <textarea
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                placeholder="Type your message..."
-                className="w-full p-3 border rounded-md focus:ring-2 focus:ring-primary mb-3"
-                rows={4}
-              />
-              <Button onClick={sendMessage} className="flex items-center space-x-2">
-                <Send className="w-4 h-4" />
-                <span>Send</span>
-              </Button>
+              <div className="relative mb-4">
+                <input
+                  type="text"
+                  value={query}
+                  onChange={(e) => fetchSuggestions(e.target.value)}
+                  placeholder="Search for a location..."
+                  className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+                {suggestions.length > 0 && (
+                  <ul className="absolute z-10 bg-white border rounded-md shadow-md w-full mt-1 max-h-60 overflow-auto">
+                    {suggestions.map((place, index) => (
+                      <li
+                        key={index}
+                        className="px-4 py-2 hover:bg-secondary cursor-pointer flex items-center space-x-2"
+                        onClick={() => addDestination(place)}
+                      >
+                        <MapPin className="w-4 h-4 text-primary" />
+                        <span>{place.display_name}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {destinations.length > 0 && (
+                <ul className="space-y-2">
+                  {destinations.map((dest) => (
+                    <li
+                      key={dest.id}
+                      className="flex justify-between items-center bg-secondary/20 px-4 py-2 rounded-md"
+                    >
+                      <span>{dest.name}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeDestination(dest.id)}
+                      >
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </CardContent>
           </Card>
-        </main>
-
-        {/* Panic Button */}
-        <button
-          onClick={handlePanic}
-          className="fixed bottom-6 right-6 bg-red-600 hover:bg-red-700 text-white px-6 py-4 rounded-full shadow-xl flex items-center space-x-2"
-        >
-          <AlertTriangle className="w-6 h-6" />
-          <span className="font-bold">PANIC</span>
-        </button>
-      </div>
+        </div>
+      </main>
     </div>
   );
 };
