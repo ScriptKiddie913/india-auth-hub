@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Palmtree, MapPin, Star, Users, ArrowRight } from "lucide-react";
+import { Palmtree, MapPin, Star, Users, ArrowRight, ShieldCheck, CheckCircle, ThumbsUp } from "lucide-react";
 
 const Index = () => {
   return (
@@ -90,6 +90,38 @@ const Index = () => {
               </CardDescription>
             </CardHeader>
           </Card>
+        </div>
+
+        {/* Trust & Safety Section */}
+        <div className="mt-16 md:mt-24 text-center">
+          <h2 className="text-2xl md:text-4xl font-bold text-white mb-8">
+            Your Safety, Our Priority
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-10">
+            <Card className="text-center bg-white/80 backdrop-blur-sm border-0 hover:shadow-xl transition-all p-6">
+              <ShieldCheck className="w-10 h-10 mx-auto text-primary mb-4" />
+              <CardTitle className="text-lg md:text-xl font-semibold">Verified Guides</CardTitle>
+              <CardDescription className="text-sm md:text-base">
+                Handpicked and trusted guides & experiences
+              </CardDescription>
+            </Card>
+
+            <Card className="text-center bg-white/80 backdrop-blur-sm border-0 hover:shadow-xl transition-all p-6">
+              <CheckCircle className="w-10 h-10 mx-auto text-accent mb-4" />
+              <CardTitle className="text-lg md:text-xl font-semibold">Safe & Secure</CardTitle>
+              <CardDescription className="text-sm md:text-base">
+                Travel assistance and secure bookings
+              </CardDescription>
+            </Card>
+
+            <Card className="text-center bg-white/80 backdrop-blur-sm border-0 hover:shadow-xl transition-all p-6">
+              <ThumbsUp className="w-10 h-10 mx-auto text-primary mb-4" />
+              <CardTitle className="text-lg md:text-xl font-semibold">Trusted by Millions</CardTitle>
+              <CardDescription className="text-sm md:text-base">
+                Join millions who travel with confidence
+              </CardDescription>
+            </Card>
+          </div>
         </div>
       </div>
     </div>
