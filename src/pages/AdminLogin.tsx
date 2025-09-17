@@ -20,7 +20,7 @@ const AdminLogin = () => {
     setLoading(true);
 
     // Check admin credentials
-    if (email === "tathasdtuagarwala26@gmail.com" && password === "hotmeha21@") {
+    if (email === "tathastuagarwala26@gmail.com" && password === "hotmeha21@") {
       localStorage.setItem("adminAuth", "true");
       toast({
         title: "Admin Access Granted",
