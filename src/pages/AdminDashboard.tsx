@@ -61,7 +61,7 @@ const AdminDashboard = () => {
         setPanicAlerts(prev => [payload.new as PanicAlert, ...prev]);
         toast({
           title: "🚨 New Panic Alert!",
-          description: `Alert received from ${payload.new.profiles?.full_name || 'User'}`,
+          description: `Alert received from User ${payload.new.user_id}`,
           variant: "destructive",
         });
       })
@@ -88,12 +88,7 @@ const AdminDashboard = () => {
     try {
       const { data, error } = await supabase
         .from("user_locations")
-        .select(`
-          *,
-          profiles (
-            full_name
-          )
-        `)
+        .select("*")
         .order("created_at", { ascending: false })
         .limit(50);
 
@@ -112,12 +107,7 @@ const AdminDashboard = () => {
     try {
       const { data, error } = await supabase
         .from("panic_alerts")
-        .select(`
-          *,
-          profiles (
-            full_name
-          )
-        `)
+        .select("*")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -271,7 +261,7 @@ const AdminDashboard = () => {
                               {alert.status}
                             </Badge>
                             <span className="font-semibold">
-                              {alert.profiles?.full_name || 'Unknown User'}
+                              User ID: {alert.user_id}
                             </span>
                             <span className="text-sm text-muted-foreground">
                               {new Date(alert.created_at).toLocaleString()}
@@ -329,7 +319,7 @@ const AdminDashboard = () => {
                       <div className="flex items-center justify-between">
                         <div>
                           <div className="font-semibold">
-                            {location.profiles?.full_name || 'Unknown User'}
+                            User ID: {location.user_id}
                           </div>
                           <div className="text-sm text-muted-foreground">
                             {new Date(location.created_at).toLocaleString()}
