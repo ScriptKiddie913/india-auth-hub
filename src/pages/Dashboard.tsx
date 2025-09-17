@@ -56,7 +56,10 @@ const Dashboard = () => {
   // ✅ Geofence state
   const geofenceStatus = useRef<Record<string, boolean>>({});
   const geofenceCircles = useRef<Record<string, google.maps.Circle>>({});
-  const GEOFENCE_RADIUS = 5000; // meters
+  const GEOFENCE_RADIUS = 500; // meters
+
+  // ✅ Beep sound
+  const beepRef = useRef<HTMLAudioElement | null>(null);
 
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -181,6 +184,15 @@ const Dashboard = () => {
                     description: `You left the area of ${dest.name}`,
                     variant: "destructive",
                   });
+
+                  // ✅ Play beep sound on exit
+                  if (beepRef.current) {
+                    beepRef.current.currentTime = 0;
+                    beepRef.current.play().catch(() => {
+                      console.warn("Autoplay prevented. User interaction required.");
+                    });
+                  }
+
                   geofenceStatus.current[dest.id] = false;
                 }
               }
@@ -329,6 +341,9 @@ const Dashboard = () => {
         backgroundImage: "url('/sea.jpg')", // ✅ Place sea.jpg in /public
       }}
     >
+      {/* Hidden audio player for beep */}
+      <audio ref={beepRef} src="/beep.mp3" preload="auto" />
+
       {/* Gradient overlay */}
       <div className="min-h-screen bg-gradient-to-br from-white/40 via-white/30 to-white/20">
         {/* Header */}
