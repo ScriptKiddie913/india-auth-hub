@@ -312,7 +312,7 @@ const Dashboard = () => {
     <div
       className="min-h-screen bg-cover bg-center bg-no-repeat"
       style={{
-        backgroundImage: "url('/image/sea.jpg')", // bg images
+        backgroundImage: "url('/sea.jpg')", // ✅ Place sea.jpg in /public
       }}
     >
       {/* Gradient overlay for readability */}
@@ -447,3 +447,4 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+
