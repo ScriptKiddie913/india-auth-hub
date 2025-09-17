@@ -7,15 +7,24 @@ import { useToast } from "@/hooks/use-toast";
 import { User, LogOut, MapPin, Trash2, Navigation } from "lucide-react";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
+interface Destination {
+  id: string;
+  name: string;
+  latitude?: number;
+  longitude?: number;
+}
+
 const Dashboard = () => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const [destinations, setDestinations] = useState<string[]>([]);
-  const [location, setLocation] = useState<{ lat: number; lng: number; address?: string } | null>(null);
+  const [destinations, setDestinations] = useState<Destination[]>([]);
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
 
+  // 🔹 New OSM state
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<any[]>([]);
 
+  // 🔹 Google Map Refs
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<google.maps.Map | null>(null);
   const markerRef = useRef<google.maps.Marker | null>(null);
@@ -29,6 +38,7 @@ const Dashboard = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         setUser(user);
+        await fetchDestinations(user.id);
       } else {
         navigate("/signin");
       }
@@ -46,30 +56,16 @@ const Dashboard = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  // ✅ Real-time location + Google Map + Reverse Geocoding
+  // ✅ Real-time location tracking + Google Map
   useEffect(() => {
     if ("geolocation" in navigator) {
       const watchId = navigator.geolocation.watchPosition(
-        async (pos) => {
+        (pos) => {
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
+          setLocation({ lat, lng });
 
-          // 🔹 Reverse geocode to get address from OpenStreetMap
-          let address = "Fetching address...";
-          try {
-            const res = await fetch(
-              `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`
-            );
-            const data = await res.json();
-            address = data.display_name || "Unknown location";
-          } catch (err) {
-            console.error("Error fetching address:", err);
-            address = "Unable to fetch address";
-          }
-
-          setLocation({ lat, lng, address });
-
-          // ✅ Initialize Google Map if not yet done
+          // Initialize map once
           if (mapRef.current && !mapInstance.current && window.google) {
             mapInstance.current = new google.maps.Map(mapRef.current, {
               center: { lat, lng },
@@ -82,7 +78,7 @@ const Dashboard = () => {
             });
           }
 
-          // ✅ Update marker + center map
+          // Update marker & center
           if (markerRef.current) {
             markerRef.current.setPosition({ lat, lng });
           }
@@ -105,7 +101,26 @@ const Dashboard = () => {
     }
   }, [toast]);
 
-  // ✅ Sign out
+  // ✅ Fetch destinations from Supabase
+  const fetchDestinations = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("destinations")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setDestinations(data || []);
+    } catch (error: any) {
+      toast({
+        title: "Error fetching destinations",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleSignOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
@@ -141,15 +156,62 @@ const Dashboard = () => {
     }
   };
 
-  // ✅ Add destination
-  const addDestination = (place: any) => {
-    setDestinations((prev) => [...prev, place.display_name]);
-    setQuery("");
-    setSuggestions([]);
+  // ✅ Add destination to Supabase
+  const addDestination = async (place: any) => {
+    if (!user) return;
+
+    try {
+      const { error } = await supabase
+        .from("destinations")
+        .insert({
+          user_id: user.id,
+          name: place.display_name,
+          latitude: parseFloat(place.lat),
+          longitude: parseFloat(place.lon),
+        });
+
+      if (error) throw error;
+
+      await fetchDestinations(user.id);
+      setQuery("");
+      setSuggestions([]);
+
+      toast({
+        title: "Destination added",
+        description: "Successfully added to your travel list!",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error adding destination",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
   };
 
-  const removeDestination = (index: number) => {
-    setDestinations((prev) => prev.filter((_, i) => i !== index));
+  // ✅ Remove destination from Supabase
+  const removeDestination = async (destinationId: string) => {
+    try {
+      const { error } = await supabase
+        .from("destinations")
+        .delete()
+        .eq("id", destinationId);
+
+      if (error) throw error;
+
+      setDestinations(prev => prev.filter(dest => dest.id !== destinationId));
+
+      toast({
+        title: "Destination removed",
+        description: "Removed from your travel list!",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error removing destination",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
   };
 
   if (loading) {
@@ -221,46 +283,11 @@ const Dashboard = () => {
                   <Navigation className="h-5 w-5 text-primary" /> Your Live Location
                 </CardTitle>
                 <CardDescription>
-                  Tracking your real-time location with Google Maps
+                  Latitude: {location.lat.toFixed(6)}, Longitude: {location.lng.toFixed(6)}
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div ref={mapRef} className="w-full h-64 rounded-lg border"></div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* ✅ Real-Time Location Display */}
-          {location && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-2xl font-bold flex items-center gap-2">
-                  <Navigation className="h-5 w-5 text-primary" /> Your Live Location
-                </CardTitle>
-                <CardDescription>
-                  Your current location tracked in real-time
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="p-4 bg-secondary/20 rounded-lg">
-                    <div className="flex items-center gap-2 mb-2">
-                      <MapPin className="h-4 w-4 text-primary" />
-                      <span className="font-medium">Current Address:</span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">{location.address}</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-3 bg-primary/10 rounded-lg">
-                      <span className="text-xs text-muted-foreground">Latitude</span>
-                      <p className="font-mono text-sm">{location.lat.toFixed(6)}</p>
-                    </div>
-                    <div className="p-3 bg-accent/10 rounded-lg">
-                      <span className="text-xs text-muted-foreground">Longitude</span>
-                      <p className="font-mono text-sm">{location.lng.toFixed(6)}</p>
-                    </div>
-                  </div>
-                </div>
+                <div ref={mapRef} className="w-full h-64 rounded-lg border" />
               </CardContent>
             </Card>
           )}
@@ -300,16 +327,16 @@ const Dashboard = () => {
 
               {destinations.length > 0 && (
                 <ul className="space-y-2">
-                  {destinations.map((dest, index) => (
+                  {destinations.map((dest) => (
                     <li
-                      key={index}
+                      key={dest.id}
                       className="flex justify-between items-center bg-secondary/20 px-4 py-2 rounded-md"
                     >
-                      <span>{dest}</span>
+                      <span>{dest.name}</span>
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => removeDestination(index)}
+                        onClick={() => removeDestination(dest.id)}
                       >
                         <Trash2 className="w-4 h-4 text-destructive" />
                       </Button>
