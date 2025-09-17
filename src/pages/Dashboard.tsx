@@ -64,20 +64,6 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // ✅ Unlock audio after first user click
-  useEffect(() => {
-    const unlockAudio = () => {
-      if (beepRef.current) {
-        beepRef.current.play().then(() => {
-          beepRef.current?.pause();
-          beepRef.current.currentTime = 0;
-        });
-      }
-      window.removeEventListener("click", unlockAudio);
-    };
-    window.addEventListener("click", unlockAudio);
-  }, []);
-
   // ✅ Authentication
   useEffect(() => {
     const getUser = async () => {
@@ -352,11 +338,20 @@ const Dashboard = () => {
     <div
       className="min-h-screen bg-cover bg-center bg-no-repeat"
       style={{
-        backgroundImage: "url('/mountainbg.jpg')",
+        backgroundImage: "url('/mountainbg.jpg')", // ✅ Place in /public
       }}
     >
-      {/* Hidden audio player for beep */}
-      <audio ref={beepRef} src="/beep.mp3" preload="auto" />
+      {/* ✅ Visible audio player */}
+      <div className="fixed bottom-4 right-4 bg-white/90 shadow-lg p-3 rounded-xl">
+        <p className="text-sm font-semibold mb-1">Geofence Alert Sound</p>
+        <audio
+          ref={beepRef}
+          src="/beep.mp3"
+          preload="auto"
+          controls
+          className="w-64"
+        />
+      </div>
 
       {/* Gradient overlay */}
       <div className="min-h-screen bg-gradient-to-br from-white/40 via-white/30 to-white/20">
