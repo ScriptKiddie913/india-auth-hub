@@ -41,24 +41,20 @@ const Dashboard = () => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [destinations, setDestinations] = useState<Destination[]>([]);
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(
-    null
-  );
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<any[]>([]);
-  const [isSafe, setIsSafe] = useState(true); // ✅ Safe / Unsafe status
+  const [isSafe, setIsSafe] = useState(true);
 
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<google.maps.Map | null>(null);
   const markerRef = useRef<google.maps.Marker | null>(null);
   const isFirstLoad = useRef(true);
 
-  // ✅ Geofence state
   const geofenceStatus = useRef<Record<string, boolean>>({});
   const geofenceCircles = useRef<Record<string, google.maps.Circle>>({});
   const GEOFENCE_RADIUS = 500; // meters
 
-  // ✅ Beep sound
   const beepRef = useRef<HTMLAudioElement | null>(null);
 
   const navigate = useNavigate();
@@ -67,9 +63,7 @@ const Dashboard = () => {
   // ✅ Authentication
   useEffect(() => {
     const getUser = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         setUser(user);
         await fetchDestinations(user.id);
@@ -91,132 +85,129 @@ const Dashboard = () => {
 
   // ✅ Real-time location tracking + Google Map + Geofencing
   useEffect(() => {
-    if ("geolocation" in navigator) {
-      const watchId = navigator.geolocation.watchPosition(
-        (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          setLocation({ lat, lng });
+    if (!("geolocation" in navigator)) return;
 
-          // Initialize map once
-          if (mapRef.current && !mapInstance.current && window.google) {
-            mapInstance.current = new google.maps.Map(mapRef.current, {
-              center: { lat, lng },
-              zoom: 15,
-            });
-            markerRef.current = new google.maps.Marker({
-              position: { lat, lng },
-              map: mapInstance.current,
-              title: "You are here",
-            });
-          }
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        setLocation({ lat, lng });
 
-          // Update marker
-          if (markerRef.current) {
-            markerRef.current.setPosition({ lat, lng });
-          }
+        // Initialize map once
+        if (mapRef.current && !mapInstance.current && window.google) {
+          mapInstance.current = new google.maps.Map(mapRef.current, {
+            center: { lat, lng },
+            zoom: 15,
+          });
+          markerRef.current = new google.maps.Marker({
+            position: { lat, lng },
+            map: mapInstance.current,
+            title: "You are here",
+          });
+        }
 
-          // Only auto-pan on first load
-          if (mapInstance.current && isFirstLoad.current) {
-            mapInstance.current.panTo({ lat, lng });
-            isFirstLoad.current = false;
-          }
+        // Update marker
+        if (markerRef.current) {
+          markerRef.current.setPosition({ lat, lng });
+        }
 
-          // ✅ Draw geofence circles
-          if (mapInstance.current) {
-            destinations.forEach((dest) => {
-              if (dest.latitude && dest.longitude) {
-                if (!geofenceCircles.current[dest.id]) {
-                  const circle = new google.maps.Circle({
-                    strokeColor: "#00FF00",
-                    strokeOpacity: 0.8,
-                    strokeWeight: 2,
-                    fillColor: "#00FF00",
-                    fillOpacity: 0.2,
-                    map: mapInstance.current,
-                    center: { lat: dest.latitude, lng: dest.longitude },
-                    radius: GEOFENCE_RADIUS,
-                  });
-                  geofenceCircles.current[dest.id] = circle;
-                }
+        // Only auto-pan on first load
+        if (mapInstance.current && isFirstLoad.current) {
+          mapInstance.current.panTo({ lat, lng });
+          isFirstLoad.current = false;
+        }
+
+        // Draw geofence circles
+        if (mapInstance.current) {
+          destinations.forEach((dest) => {
+            if (dest.latitude && dest.longitude && !geofenceCircles.current[dest.id]) {
+              const circle = new google.maps.Circle({
+                strokeColor: "#00FF00",
+                strokeOpacity: 0.8,
+                strokeWeight: 2,
+                fillColor: "#00FF00",
+                fillOpacity: 0.2,
+                map: mapInstance.current,
+                center: { lat: dest.latitude, lng: dest.longitude },
+                radius: GEOFENCE_RADIUS,
+              });
+              geofenceCircles.current[dest.id] = circle;
+            }
+          });
+
+          // Remove circles for deleted destinations
+          Object.keys(geofenceCircles.current).forEach((id) => {
+            if (!destinations.find((d) => d.id === id)) {
+              geofenceCircles.current[id].setMap(null);
+              delete geofenceCircles.current[id];
+            }
+          });
+        }
+
+        // Check geofences
+        if (user && destinations.length > 0) {
+          let insideAnyGeofence = false;
+
+          destinations.forEach((dest) => {
+            if (dest.latitude && dest.longitude) {
+              const distance = getDistance(lat, lng, dest.latitude, dest.longitude);
+              const isInside = distance <= GEOFENCE_RADIUS;
+              const wasInside = geofenceStatus.current[dest.id] || false;
+
+              if (isInside) insideAnyGeofence = true;
+
+              if (isInside && !wasInside) {
+                toast({
+                  title: "📍 Geofence Entered",
+                  description: `You entered the area of ${dest.name}`,
+                });
+                geofenceStatus.current[dest.id] = true;
               }
-            });
 
-            // Remove circles for deleted destinations
-            Object.keys(geofenceCircles.current).forEach((id) => {
-              if (!destinations.find((d) => d.id === id)) {
-                geofenceCircles.current[id].setMap(null);
-                delete geofenceCircles.current[id];
-              }
-            });
-          }
+              if (!isInside && wasInside) {
+                toast({
+                  title: "🚪 Geofence Exited",
+                  description: `You left the area of ${dest.name}`,
+                  variant: "destructive",
+                });
 
-          // ✅ Check geofences
-          if (user && destinations.length > 0) {
-            let insideAnyGeofence = false;
-
-            destinations.forEach((dest) => {
-              if (dest.latitude && dest.longitude) {
-                const distance = getDistance(
-                  lat,
-                  lng,
-                  dest.latitude,
-                  dest.longitude
-                );
-                const isInside = distance <= GEOFENCE_RADIUS;
-                const wasInside = geofenceStatus.current[dest.id] || false;
-
-                if (isInside) {
-                  insideAnyGeofence = true;
-                }
-
-                if (isInside && !wasInside) {
-                  toast({
-                    title: "📍 Geofence Entered",
-                    description: `You entered the area of ${dest.name}`,
-                  });
-                  geofenceStatus.current[dest.id] = true;
-                }
-
-                if (!isInside && wasInside) {
-                  toast({
-                    title: "🚪 Geofence Exited",
-                    description: `You left the area of ${dest.name}`,
-                    variant: "destructive",
-                  });
-
-                  // ✅ Play beep sound on exit
-                  if (beepRef.current) {
-                    beepRef.current.currentTime = 0;
-                    beepRef.current.play().catch(() => {
-                      console.warn("Autoplay prevented. User interaction required.");
+                // ✅ Autoplay beep sound on exit
+                if (beepRef.current) {
+                  beepRef.current.currentTime = 0;
+                  const playPromise = beepRef.current.play();
+                  if (playPromise !== undefined) {
+                    playPromise.catch((err) => {
+                      console.warn(
+                        "Autoplay blocked. User interaction required to play sound.",
+                        err
+                      );
                     });
                   }
-
-                  geofenceStatus.current[dest.id] = false;
                 }
-              }
-            });
 
-            // ✅ Update Safe/Unsafe
-            setIsSafe(insideAnyGeofence);
-          }
-        },
-        (err) => {
-          console.error("Error getting location:", err);
-          toast({
-            title: "Location Error",
-            description: err.message,
-            variant: "destructive",
+                geofenceStatus.current[dest.id] = false;
+              }
+            }
           });
-        },
-        { enableHighAccuracy: true, maximumAge: 0 }
-      );
-      return () => navigator.geolocation.clearWatch(watchId);
-    }
+
+          setIsSafe(insideAnyGeofence);
+        }
+      },
+      (err) => {
+        console.error("Error getting location:", err);
+        toast({
+          title: "Location Error",
+          description: err.message,
+          variant: "destructive",
+        });
+      },
+      { enableHighAccuracy: true, maximumAge: 0 }
+    );
+
+    return () => navigator.geolocation.clearWatch(watchId);
   }, [toast, destinations, user]);
 
-  // ✅ Fetch destinations from Supabase
+  // ✅ Fetch destinations
   const fetchDestinations = async (userId: string) => {
     try {
       const { data, error } = await supabase
@@ -253,7 +244,7 @@ const Dashboard = () => {
     }
   };
 
-  // ✅ Fetch location suggestions from OpenStreetMap
+  // ✅ Fetch location suggestions
   const fetchSuggestions = async (value: string) => {
     setQuery(value);
     if (value.length < 3) {
@@ -262,9 +253,7 @@ const Dashboard = () => {
     }
     try {
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-          value
-        )}`
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}`
       );
       const data = await res.json();
       setSuggestions(data);
@@ -303,14 +292,9 @@ const Dashboard = () => {
   // ✅ Remove destination
   const removeDestination = async (destinationId: string) => {
     try {
-      const { error } = await supabase
-        .from("destinations")
-        .delete()
-        .eq("id", destinationId);
+      const { error } = await supabase.from("destinations").delete().eq("id", destinationId);
       if (error) throw error;
-      setDestinations((prev) =>
-        prev.filter((dest) => dest.id !== destinationId)
-      );
+      setDestinations((prev) => prev.filter((dest) => dest.id !== destinationId));
       toast({
         title: "Destination removed",
         description: "Removed from your travel list!",
@@ -337,23 +321,11 @@ const Dashboard = () => {
   return (
     <div
       className="min-h-screen bg-cover bg-center bg-no-repeat"
-      style={{
-        backgroundImage: "url('/mountainbg.jpg')", // ✅ Place in /public
-      }}
+      style={{ backgroundImage: "url('/mountainbg.jpg')" }}
     >
-      {/* ✅ Visible audio player */}
-      <div className="fixed bottom-4 right-4 bg-white/90 shadow-lg p-3 rounded-xl">
-        <p className="text-sm font-semibold mb-1">Geofence Alert Sound</p>
-        <audio
-          ref={beepRef}
-          src="/beep.mp3"
-          preload="auto"
-          controls
-          className="w-64"
-        />
-      </div>
+      {/* Hidden audio player */}
+      <audio ref={beepRef} src="/beep.mp3" preload="auto" />
 
-      {/* Gradient overlay */}
       <div className="min-h-screen bg-gradient-to-br from-white/40 via-white/30 to-white/20">
         {/* Header */}
         <header className="border-b bg-card/95 backdrop-blur-sm sticky top-0 z-50">
@@ -367,9 +339,7 @@ const Dashboard = () => {
                   <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                     Incredible India
                   </h1>
-                  <p className="text-sm text-muted-foreground">
-                    Tourism Dashboard
-                  </p>
+                  <p className="text-sm text-muted-foreground">Tourism Dashboard</p>
                 </div>
               </div>
               <Button
@@ -384,7 +354,6 @@ const Dashboard = () => {
           </div>
         </header>
 
-        {/* Main Content */}
         <main className="container mx-auto px-4 py-8">
           <div className="grid gap-6">
             {/* Welcome */}
@@ -396,10 +365,7 @@ const Dashboard = () => {
                   </div>
                   <div>
                     <CardTitle className="text-3xl font-bold">
-                      Welcome,{" "}
-                      {user.user_metadata?.full_name ||
-                        user.email?.split("@")[0]}
-                      !
+                      Welcome, {user.user_metadata?.full_name || user.email?.split("@")[0]}!
                     </CardTitle>
                     <CardDescription className="text-white/80 text-lg">
                       Ready to explore the wonders of India?
@@ -409,19 +375,16 @@ const Dashboard = () => {
               </CardHeader>
             </Card>
 
-            {/* ✅ Real-Time Location Map */}
+            {/* Real-Time Location Map */}
             {location && (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-2xl font-bold flex items-center gap-2">
-                    <Navigation className="h-5 w-5 text-primary" /> Your Live
-                    Location
+                    <Navigation className="h-5 w-5 text-primary" /> Your Live Location
                   </CardTitle>
                   <CardDescription>
-                    Latitude: {location.lat.toFixed(6)}, Longitude:{" "}
-                    {location.lng.toFixed(6)}
+                    Latitude: {location.lat.toFixed(6)}, Longitude: {location.lng.toFixed(6)}
                   </CardDescription>
-                  {/* ✅ Safe / Unsafe Indicator */}
                   <div className="mt-2">
                     {isSafe ? (
                       <span className="px-3 py-1 rounded-full bg-green-500 text-white font-semibold">
@@ -440,15 +403,12 @@ const Dashboard = () => {
               </Card>
             )}
 
-            {/* ✅ Destinations Section */}
+            {/* Destinations Section */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-2xl font-bold">
-                  Plan Your Destinations
-                </CardTitle>
+                <CardTitle className="text-2xl font-bold">Plan Your Destinations</CardTitle>
                 <CardDescription>
-                  Search for locations using OpenStreetMap and add them to your
-                  travel list.
+                  Search for locations using OpenStreetMap and add them to your travel list.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -505,3 +465,4 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+
