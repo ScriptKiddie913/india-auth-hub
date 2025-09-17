@@ -316,7 +316,7 @@ const Dashboard = () => {
       }}
     >
       {/* Gradient overlay for readability */}
-      <div className="min-h-screen bg-gradient-to-br from-background/90 via-secondary/60 to-accent/50">
+       <div className="min-h-screen bg-gradient-to-br from-white/40 via-white/30 to-white/20">
         {/* Header */}
         <header className="border-b bg-card/95 backdrop-blur-sm sticky top-0 z-50">
           <div className="container mx-auto px-4 py-4">
