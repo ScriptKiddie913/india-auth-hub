@@ -19,32 +19,40 @@ const AdminLogin = () => {
     e.preventDefault();
     setLoading(true);
 
-    const enteredEmail = email.trim();
-    const enteredPassword = password.trim();
-
-    // Debug (only in development)
-    console.log("Entered Email:", enteredEmail);
-    console.log("Entered Password:", enteredPassword);
-
-    // ✅ Correct credentials
-    const adminEmail = "tathastuagarwala26@gmail.com";
-    const adminPassword = "Hotmeha21@21@";
-
-    if (enteredEmail === adminEmail && enteredPassword === adminPassword) {
-      localStorage.setItem("adminAuth", "true");
-      toast({
-        title: "Admin Access Granted",
-        description: "Welcome to the admin panel.",
+    try {
+      const res = await fetch("/api/admin-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
       });
-      navigate("/admin-dashboard");
-    } else {
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        // ⚡ Instead of plain flag, use JWT/session in real setup
+        localStorage.setItem("adminAuth", "true");
+
+        toast({
+          title: "Admin Access Granted",
+          description: "Welcome to the admin panel.",
+        });
+        navigate("/admin-dashboard");
+      } else {
+        toast({
+          title: "Access Denied",
+          description: data.error || "Invalid admin credentials.",
+          variant: "destructive",
+        });
+      }
+    } catch (err: any) {
       toast({
-        title: "Access Denied",
-        description: "Invalid admin credentials.",
+        title: "Error",
+        description: err.message,
         variant: "destructive",
       });
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
