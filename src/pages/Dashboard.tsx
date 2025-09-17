@@ -10,7 +10,15 @@ import {
 } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { User, LogOut, MapPin, Trash2, Navigation, AlertTriangle, Send } from "lucide-react";
+import {
+  User,
+  LogOut,
+  MapPin,
+  Trash2,
+  Navigation,
+  AlertTriangle,
+  Send,
+} from "lucide-react";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 interface Destination {
@@ -41,10 +49,12 @@ const Dashboard = () => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [destinations, setDestinations] = useState<Destination[]>([]);
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(
+    null
+  );
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<any[]>([]);
-  const [message, setMessage] = useState(""); // ✅ custom message
+  const [message, setMessage] = useState("");
 
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<google.maps.Map | null>(null);
@@ -141,7 +151,12 @@ const Dashboard = () => {
           if (user && destinations.length > 0) {
             destinations.forEach((dest) => {
               if (dest.latitude && dest.longitude) {
-                const distance = getDistance(lat, lng, dest.latitude, dest.longitude);
+                const distance = getDistance(
+                  lat,
+                  lng,
+                  dest.latitude,
+                  dest.longitude
+                );
                 const isInside = distance <= GEOFENCE_RADIUS;
                 const wasInside = geofenceStatus.current[dest.id] || false;
 
@@ -198,7 +213,21 @@ const Dashboard = () => {
     }
   };
 
-  // ✅ Panic button → send alert to admin
+  // ✅ Sign Out
+  const handleSignOut = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      toast({
+        title: "Error signing out",
+        description: error.message,
+        variant: "destructive",
+      });
+    } else {
+      navigate("/signin");
+    }
+  };
+
+  // ✅ Panic button
   const handlePanic = async () => {
     if (!user) return;
     try {
@@ -250,7 +279,7 @@ const Dashboard = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary/20 to-accent/10">
+      <div className="min-h-screen flex items-center justify-center bg-black/40">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
       </div>
     );
@@ -288,7 +317,8 @@ const Dashboard = () => {
           <Card className="bg-gradient-to-r from-primary to-accent text-white border-0 shadow-xl">
             <CardHeader>
               <CardTitle className="text-3xl font-bold">
-                Welcome, {user.user_metadata?.full_name || user.email?.split("@")[0]}!
+                Welcome,{" "}
+                {user.user_metadata?.full_name || user.email?.split("@")[0]}!
               </CardTitle>
               <CardDescription className="text-white/80">
                 Ready to explore the wonders of India?
@@ -301,10 +331,12 @@ const Dashboard = () => {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-2xl font-bold">
-                  <Navigation className="h-5 w-5 text-primary" /> Your Live Location
+                  <Navigation className="h-5 w-5 text-primary" /> Your Live
+                  Location
                 </CardTitle>
                 <CardDescription>
-                  Latitude: {location.lat.toFixed(6)}, Longitude: {location.lng.toFixed(6)}
+                  Latitude: {location.lat.toFixed(6)}, Longitude:{" "}
+                  {location.lng.toFixed(6)}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -313,62 +345,12 @@ const Dashboard = () => {
             </Card>
           )}
 
-          {/* Destinations */}
+          {/* Message Section */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-2xl font-bold">Plan Your Destinations</CardTitle>
-              <CardDescription>Search and add places from OpenStreetMap</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="relative mb-4">
-                <input
-                  type="text"
-                  value={query}
-                  onChange={(e) => fetchSuggestions(e.target.value)}
-                  placeholder="Search for a location..."
-                  className="w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-primary"
-                />
-                {suggestions.length > 0 && (
-                  <ul className="absolute z-10 bg-white border rounded-md shadow-md w-full mt-1 max-h-60 overflow-auto">
-                    {suggestions.map((place, index) => (
-                      <li
-                        key={index}
-                        className="px-4 py-2 hover:bg-secondary cursor-pointer flex items-center space-x-2"
-                        onClick={() => addDestination(place)}
-                      >
-                        <MapPin className="w-4 h-4 text-primary" />
-                        <span>{place.display_name}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              {destinations.length > 0 && (
-                <ul className="space-y-2">
-                  {destinations.map((dest) => (
-                    <li
-                      key={dest.id}
-                      className="flex justify-between items-center bg-secondary/20 px-4 py-2 rounded-md"
-                    >
-                      <span>{dest.name}</span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removeDestination(dest.id)}
-                      >
-                        <Trash2 className="w-4 h-4 text-destructive" />
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* ✅ Message Section */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-2xl font-bold">Send a Message to Admin</CardTitle>
+              <CardTitle className="text-2xl font-bold">
+                Send a Message to Admin
+              </CardTitle>
               <CardDescription>Share your updates or concerns</CardDescription>
             </CardHeader>
             <CardContent>
@@ -387,7 +369,7 @@ const Dashboard = () => {
           </Card>
         </main>
 
-        {/* ✅ Panic Button (Floating) */}
+        {/* Panic Button */}
         <button
           onClick={handlePanic}
           className="fixed bottom-6 right-6 bg-red-600 hover:bg-red-700 text-white px-6 py-4 rounded-full shadow-xl flex items-center space-x-2"
