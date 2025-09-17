@@ -89,7 +89,7 @@ const AdminDashboard = () => {
         .from("user_locations")
         .select(`
           *,
-          profiles:user_id (
+          profiles (
             full_name
           )
         `)
@@ -113,7 +113,7 @@ const AdminDashboard = () => {
         .from("panic_alerts")
         .select(`
           *,
-          profiles:user_id (
+          profiles (
             full_name
           )
         `)

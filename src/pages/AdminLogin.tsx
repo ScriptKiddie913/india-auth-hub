@@ -19,18 +19,36 @@ const AdminLogin = () => {
     e.preventDefault();
     setLoading(true);
 
-    // Check admin credentials
-    if (email === "tathastuagarwala26@gmail.com" && password === "Hotmeha21@21@") {
-      localStorage.setItem("adminAuth", "true");
-      toast({
-        title: "Admin Access Granted",
-        description: "Welcome to the admin panel.",
+    try {
+      // Call admin authentication edge function
+      const response = await fetch(`https://xzgwtdqtigmlihkyvblv.supabase.co/functions/v1/admin-auth`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
       });
-      navigate("/admin-dashboard");
-    } else {
+
+      const data = await response.json();
+
+      if (data.success) {
+        localStorage.setItem("adminAuth", JSON.stringify(data.admin));
+        toast({
+          title: "Admin Access Granted",
+          description: `Welcome ${data.admin.full_name}`,
+        });
+        navigate("/admin-dashboard");
+      } else {
+        toast({
+          title: "Access Denied",
+          description: "Invalid admin credentials.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
       toast({
-        title: "Access Denied",
-        description: "Invalid admin credentials.",
+        title: "Error",
+        description: "Failed to authenticate. Please try again.",
         variant: "destructive",
       });
     }

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Shield, LogOut, AlertTriangle, MapPin, Users, Clock } from "lucide-react";
+import AdminMap from "@/components/AdminMap";
 
 interface UserLocation {
   id: string;
@@ -42,7 +43,7 @@ const AdminDashboard = () => {
     // Check admin authentication
     const adminAuth = localStorage.getItem("adminAuth");
     if (!adminAuth) {
-      navigate("/admin-login");
+      navigate("/admin");
       return;
     }
 
@@ -89,7 +90,7 @@ const AdminDashboard = () => {
         .from("user_locations")
         .select(`
           *,
-          profiles:user_id (
+          profiles (
             full_name
           )
         `)
@@ -113,7 +114,7 @@ const AdminDashboard = () => {
         .from("panic_alerts")
         .select(`
           *,
-          profiles:user_id (
+          profiles (
             full_name
           )
         `)
@@ -162,7 +163,7 @@ const AdminDashboard = () => {
 
   const handleLogout = () => {
     localStorage.removeItem("adminAuth");
-    navigate("/admin-login");
+    navigate("/admin");
   };
 
   if (loading) {
@@ -301,22 +302,25 @@ const AdminDashboard = () => {
             </CardContent>
           </Card>
 
-          {/* User Locations */}
+          {/* User Locations Map */}
+          <AdminMap userLocations={userLocations} />
+
+          {/* User Locations List */}
           <Card>
             <CardHeader>
               <CardTitle className="text-2xl font-bold flex items-center gap-2">
                 <MapPin className="h-6 w-6 text-primary" />
-                User Locations
+                User Locations List
               </CardTitle>
               <CardDescription>
-                Real-time location tracking of all users
+                Recent location updates from all users
               </CardDescription>
             </CardHeader>
             <CardContent>
               {userLocations.length === 0 ? (
                 <p className="text-muted-foreground text-center py-8">No user locations</p>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-4 max-h-96 overflow-y-auto">
                   {userLocations.map((location) => (
                     <div
                       key={location.id}

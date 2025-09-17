@@ -51,6 +51,19 @@ const Index = () => {
               </Button>
             </Link>
           </div>
+
+          {/* Admin Access */}
+          <div className="mt-6 md:mt-8">
+            <Link to="/admin">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="text-white/70 hover:text-white hover:bg-white/10 transition-all duration-300"
+              >
+                Admin Access
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {/* Features Grid */}
