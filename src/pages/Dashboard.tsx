@@ -10,8 +10,8 @@ import {
 } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { User, LogOut, MapPin, Trash2, Navigation } from "lucide-react";
-import type { User as SupabaseUser } from "@supabase/supabase-js";
+import { User, LogOut, MapPin, Trash2, Navigation, AlertTriangle } from "lucide-react";
+import type { User as SupabaseUser, Session } from "@supabase/supabase-js";
 
 interface Destination {
   id: string;
@@ -22,11 +22,14 @@ interface Destination {
 
 const Dashboard = () => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(
     null
   );
+  const [panicMessage, setPanicMessage] = useState("");
+  const [showPanicModal, setShowPanicModal] = useState(false);
 
   // 🔹 OSM Search
   const [query, setQuery] = useState("");
@@ -41,29 +44,39 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // ✅ Authentication
+  // ✅ Persistent Authentication
   useEffect(() => {
-    const getUser = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (user) {
-        setUser(user);
-        await fetchDestinations(user.id);
-      } else {
+    // Set up auth state listener FIRST
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        
+        if (event === "SIGNED_OUT" || !session) {
+          navigate("/signin");
+        } else if (session?.user) {
+          // Defer Supabase calls with setTimeout to avoid deadlock
+          setTimeout(() => {
+            fetchDestinations(session.user.id);
+          }, 0);
+        }
+      }
+    );
+
+    // THEN check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      
+      if (!session) {
         navigate("/signin");
+      } else {
+        fetchDestinations(session.user.id);
       }
       setLoading(false);
-    };
-    getUser();
-
-    const { data } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_OUT" || !session) {
-        navigate("/signin");
-      }
     });
 
-    return () => data.subscription.unsubscribe();
+    return () => subscription.unsubscribe();
   }, [navigate]);
 
   // ✅ Real-time location tracking + Google Map
@@ -74,6 +87,17 @@ const Dashboard = () => {
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
           setLocation({ lat, lng });
+
+          // Store location in database for admin monitoring
+          if (user) {
+            setTimeout(() => {
+              supabase.from("user_locations").insert({
+                user_id: user.id,
+                latitude: lat,
+                longitude: lng,
+              });
+            }, 0);
+          }
 
           // Initialize map once
           if (mapRef.current && !mapInstance.current && window.google) {
@@ -111,7 +135,7 @@ const Dashboard = () => {
       );
       return () => navigator.geolocation.clearWatch(watchId);
     }
-  }, [toast]);
+  }, [toast, user]);
 
   // ✅ Fetch destinations from Supabase
   const fetchDestinations = async (userId: string) => {
@@ -221,6 +245,45 @@ const Dashboard = () => {
     }
   };
 
+  // ✅ Panic Alert Function
+  const sendPanicAlert = async () => {
+    if (!user || !location) {
+      toast({
+        title: "Cannot send alert",
+        description: "User not authenticated or location not available",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from("panic_alerts").insert({
+        user_id: user.id,
+        message: panicMessage || "Emergency assistance needed!",
+        latitude: location.lat,
+        longitude: location.lng,
+        status: "active",
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "🚨 Panic Alert Sent!",
+        description: "Emergency services have been notified of your location.",
+        variant: "destructive",
+      });
+
+      setPanicMessage("");
+      setShowPanicModal(false);
+    } catch (error: any) {
+      toast({
+        title: "Error sending panic alert",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary/20 to-accent/10">
@@ -250,14 +313,24 @@ const Dashboard = () => {
                 </p>
               </div>
             </div>
-            <Button
-              onClick={handleSignOut}
-              variant="outline"
-              className="flex items-center space-x-2 hover:bg-destructive hover:text-destructive-foreground"
-            >
-              <LogOut className="w-4 h-4" />
-              <span>Sign Out</span>
-            </Button>
+            <div className="flex items-center space-x-2">
+              <Button
+                onClick={() => setShowPanicModal(true)}
+                variant="destructive"
+                className="flex items-center space-x-2 bg-destructive hover:bg-destructive/90 text-white font-semibold animate-pulse"
+              >
+                <AlertTriangle className="w-4 h-4" />
+                <span>PANIC</span>
+              </Button>
+              <Button
+                onClick={handleSignOut}
+                variant="outline"
+                className="flex items-center space-x-2 hover:bg-destructive hover:text-destructive-foreground"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Sign Out</span>
+              </Button>
+            </div>
           </div>
         </div>
       </header>
@@ -365,6 +438,62 @@ const Dashboard = () => {
           </Card>
         </div>
       </main>
+
+      {/* Panic Alert Modal */}
+      {showPanicModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <CardTitle className="text-2xl font-bold text-destructive flex items-center gap-2">
+                <AlertTriangle className="h-6 w-6" />
+                Emergency Alert
+              </CardTitle>
+              <CardDescription>
+                This will immediately notify emergency services with your current location.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <label className="text-sm font-medium">Optional Message:</label>
+                <textarea
+                  value={panicMessage}
+                  onChange={(e) => setPanicMessage(e.target.value)}
+                  placeholder="Describe your emergency (optional)..."
+                  className="w-full mt-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-destructive"
+                  rows={3}
+                />
+              </div>
+              
+              {location && (
+                <div className="text-sm text-muted-foreground">
+                  <strong>Your Location:</strong><br />
+                  Lat: {location.lat.toFixed(6)}, Lng: {location.lng.toFixed(6)}
+                </div>
+              )}
+              
+              <div className="flex space-x-2">
+                <Button
+                  onClick={sendPanicAlert}
+                  variant="destructive"
+                  className="flex-1 bg-destructive hover:bg-destructive/90 text-white font-semibold"
+                >
+                  Send Emergency Alert
+                </Button>
+                <Button
+                  onClick={() => {
+                    setShowPanicModal(false);
+                    setPanicMessage("");
+                  }}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 };
