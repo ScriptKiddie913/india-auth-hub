@@ -343,6 +343,3 @@ const AdminDashboard = () => {
 };
 
 export default AdminDashboard;
-
-
-Do not show user id  in user location list instead full name of user
