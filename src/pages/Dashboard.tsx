@@ -10,8 +10,8 @@ import {
 } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { User, LogOut, MapPin, Trash2, Navigation, AlertTriangle } from "lucide-react";
-import type { User as SupabaseUser, Session } from "@supabase/supabase-js";
+import { User, LogOut, MapPin, Trash2, Navigation } from "lucide-react";
+import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 interface Destination {
   id: string;
@@ -20,66 +20,73 @@ interface Destination {
   longitude?: number;
 }
 
+// ✅ Haversine formula to calculate distance (in meters)
+const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const R = 6371e3; // Earth radius in meters
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const φ1 = toRad(lat1);
+  const φ2 = toRad(lat2);
+  const Δφ = toRad(lat2 - lat1);
+  const Δλ = toRad(lon2 - lon1);
+
+  const a =
+    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.cos(φ1) * Math.cos(φ2) *
+      Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c; // in meters
+};
+
 const Dashboard = () => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(
     null
   );
-  const [panicMessage, setPanicMessage] = useState("");
-  const [showPanicModal, setShowPanicModal] = useState(false);
 
-  // 🔹 OSM Search
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<any[]>([]);
 
-  // 🔹 Google Map Refs
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<google.maps.Map | null>(null);
   const markerRef = useRef<google.maps.Marker | null>(null);
   const isFirstLoad = useRef(true);
 
+  // ✅ Geofence state
+  const geofenceStatus = useRef<Record<string, boolean>>({});
+  const GEOFENCE_RADIUS = 500; // meters
+
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // ✅ Persistent Authentication
+  // ✅ Authentication
   useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        
-        if (event === "SIGNED_OUT" || !session) {
-          navigate("/signin");
-        } else if (session?.user) {
-          // Defer Supabase calls with setTimeout to avoid deadlock
-          setTimeout(() => {
-            fetchDestinations(session.user.id);
-          }, 0);
-        }
-      }
-    );
-
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      
-      if (!session) {
-        navigate("/signin");
+    const getUser = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        setUser(user);
+        await fetchDestinations(user.id);
       } else {
-        fetchDestinations(session.user.id);
+        navigate("/signin");
       }
       setLoading(false);
+    };
+    getUser();
+
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_OUT" || !session) {
+        navigate("/signin");
+      }
     });
 
-    return () => subscription.unsubscribe();
+    return () => data.subscription.unsubscribe();
   }, [navigate]);
 
-  // ✅ Real-time location tracking + Google Map
+  // ✅ Real-time location tracking + Google Map + Geofencing
   useEffect(() => {
     if ("geolocation" in navigator) {
       const watchId = navigator.geolocation.watchPosition(
@@ -87,17 +94,6 @@ const Dashboard = () => {
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
           setLocation({ lat, lng });
-
-          // Store location in database for admin monitoring
-          if (user) {
-            setTimeout(() => {
-              supabase.from("user_locations").insert({
-                user_id: user.id,
-                latitude: lat,
-                longitude: lng,
-              });
-            }, 0);
-          }
 
           // Initialize map once
           if (mapRef.current && !mapInstance.current && window.google) {
@@ -122,6 +118,40 @@ const Dashboard = () => {
             mapInstance.current.panTo({ lat, lng });
             isFirstLoad.current = false;
           }
+
+          // ✅ Check geofences
+          if (user && destinations.length > 0) {
+            destinations.forEach((dest) => {
+              if (dest.latitude && dest.longitude) {
+                const distance = getDistance(
+                  lat,
+                  lng,
+                  dest.latitude,
+                  dest.longitude
+                );
+
+                const isInside = distance <= GEOFENCE_RADIUS;
+                const wasInside = geofenceStatus.current[dest.id] || false;
+
+                if (isInside && !wasInside) {
+                  toast({
+                    title: "📍 Geofence Entered",
+                    description: `You entered the area of ${dest.name}`,
+                  });
+                  geofenceStatus.current[dest.id] = true;
+                }
+
+                if (!isInside && wasInside) {
+                  toast({
+                    title: "🚪 Geofence Exited",
+                    description: `You left the area of ${dest.name}`,
+                    variant: "destructive",
+                  });
+                  geofenceStatus.current[dest.id] = false;
+                }
+              }
+            });
+          }
         },
         (err) => {
           console.error("Error getting location:", err);
@@ -135,7 +165,7 @@ const Dashboard = () => {
       );
       return () => navigator.geolocation.clearWatch(watchId);
     }
-  }, [toast, user]);
+  }, [toast, destinations, user]);
 
   // ✅ Fetch destinations from Supabase
   const fetchDestinations = async (userId: string) => {
@@ -245,45 +275,6 @@ const Dashboard = () => {
     }
   };
 
-  // ✅ Panic Alert Function
-  const sendPanicAlert = async () => {
-    if (!user || !location) {
-      toast({
-        title: "Cannot send alert",
-        description: "User not authenticated or location not available",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      const { error } = await supabase.from("panic_alerts").insert({
-        user_id: user.id,
-        message: panicMessage || "Emergency assistance needed!",
-        latitude: location.lat,
-        longitude: location.lng,
-        status: "active",
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: "🚨 Panic Alert Sent!",
-        description: "Emergency services have been notified of your location.",
-        variant: "destructive",
-      });
-
-      setPanicMessage("");
-      setShowPanicModal(false);
-    } catch (error: any) {
-      toast({
-        title: "Error sending panic alert",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary/20 to-accent/10">
@@ -313,24 +304,14 @@ const Dashboard = () => {
                 </p>
               </div>
             </div>
-            <div className="flex items-center space-x-2">
-              <Button
-                onClick={() => setShowPanicModal(true)}
-                variant="destructive"
-                className="flex items-center space-x-2 bg-destructive hover:bg-destructive/90 text-white font-semibold animate-pulse"
-              >
-                <AlertTriangle className="w-4 h-4" />
-                <span>PANIC</span>
-              </Button>
-              <Button
-                onClick={handleSignOut}
-                variant="outline"
-                className="flex items-center space-x-2 hover:bg-destructive hover:text-destructive-foreground"
-              >
-                <LogOut className="w-4 h-4" />
-                <span>Sign Out</span>
-              </Button>
-            </div>
+            <Button
+              onClick={handleSignOut}
+              variant="outline"
+              className="flex items-center space-x-2 hover:bg-destructive hover:text-destructive-foreground"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Sign Out</span>
+            </Button>
           </div>
         </div>
       </header>
@@ -347,10 +328,7 @@ const Dashboard = () => {
                 </div>
                 <div>
                   <CardTitle className="text-3xl font-bold">
-                    Welcome,{" "}
-                    {user.user_metadata?.full_name ||
-                      user.email?.split("@")[0]}
-                    !
+                    Welcome, {user.user_metadata?.full_name || user.email?.split("@")[0]}!
                   </CardTitle>
                   <CardDescription className="text-white/80 text-lg">
                     Ready to explore the wonders of India?
@@ -365,12 +343,10 @@ const Dashboard = () => {
             <Card>
               <CardHeader>
                 <CardTitle className="text-2xl font-bold flex items-center gap-2">
-                  <Navigation className="h-5 w-5 text-primary" /> Your Live
-                  Location
+                  <Navigation className="h-5 w-5 text-primary" /> Your Live Location
                 </CardTitle>
                 <CardDescription>
-                  Latitude: {location.lat.toFixed(6)}, Longitude:{" "}
-                  {location.lng.toFixed(6)}
+                  Latitude: {location.lat.toFixed(6)}, Longitude: {location.lng.toFixed(6)}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -382,12 +358,9 @@ const Dashboard = () => {
           {/* ✅ Destinations Section with OSM Search */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-2xl font-bold">
-                Plan Your Destinations
-              </CardTitle>
+              <CardTitle className="text-2xl font-bold">Plan Your Destinations</CardTitle>
               <CardDescription>
-                Search for locations using OpenStreetMap and add them to your
-                travel list.
+                Search for locations using OpenStreetMap and add them to your travel list.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -438,62 +411,6 @@ const Dashboard = () => {
           </Card>
         </div>
       </main>
-
-      {/* Panic Alert Modal */}
-      {showPanicModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-md">
-            <CardHeader>
-              <CardTitle className="text-2xl font-bold text-destructive flex items-center gap-2">
-                <AlertTriangle className="h-6 w-6" />
-                Emergency Alert
-              </CardTitle>
-              <CardDescription>
-                This will immediately notify emergency services with your current location.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <label className="text-sm font-medium">Optional Message:</label>
-                <textarea
-                  value={panicMessage}
-                  onChange={(e) => setPanicMessage(e.target.value)}
-                  placeholder="Describe your emergency (optional)..."
-                  className="w-full mt-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-destructive"
-                  rows={3}
-                />
-              </div>
-              
-              {location && (
-                <div className="text-sm text-muted-foreground">
-                  <strong>Your Location:</strong><br />
-                  Lat: {location.lat.toFixed(6)}, Lng: {location.lng.toFixed(6)}
-                </div>
-              )}
-              
-              <div className="flex space-x-2">
-                <Button
-                  onClick={sendPanicAlert}
-                  variant="destructive"
-                  className="flex-1 bg-destructive hover:bg-destructive/90 text-white font-semibold"
-                >
-                  Send Emergency Alert
-                </Button>
-                <Button
-                  onClick={() => {
-                    setShowPanicModal(false);
-                    setPanicMessage("");
-                  }}
-                  variant="outline"
-                  className="flex-1"
-                >
-                  Cancel
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
     </div>
   );
 };
