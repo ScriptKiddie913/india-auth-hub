@@ -44,9 +44,9 @@ const Dashboard = () => {
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(
     null
   );
-
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [isSafe, setIsSafe] = useState(true); // ✅ Safe / Unsafe status
 
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<google.maps.Map | null>(null);
@@ -150,11 +150,22 @@ const Dashboard = () => {
 
           // ✅ Check geofences
           if (user && destinations.length > 0) {
+            let insideAnyGeofence = false;
+
             destinations.forEach((dest) => {
               if (dest.latitude && dest.longitude) {
-                const distance = getDistance(lat, lng, dest.latitude, dest.longitude);
+                const distance = getDistance(
+                  lat,
+                  lng,
+                  dest.latitude,
+                  dest.longitude
+                );
                 const isInside = distance <= GEOFENCE_RADIUS;
                 const wasInside = geofenceStatus.current[dest.id] || false;
+
+                if (isInside) {
+                  insideAnyGeofence = true;
+                }
 
                 if (isInside && !wasInside) {
                   toast({
@@ -174,6 +185,9 @@ const Dashboard = () => {
                 }
               }
             });
+
+            // ✅ Update Safe/Unsafe
+            setIsSafe(insideAnyGeofence);
           }
         },
         (err) => {
@@ -315,8 +329,8 @@ const Dashboard = () => {
         backgroundImage: "url('/sea.jpg')", // ✅ Place sea.jpg in /public
       }}
     >
-      {/* Gradient overlay for readability */}
-       <div className="min-h-screen bg-gradient-to-br from-white/40 via-white/30 to-white/20">
+      {/* Gradient overlay */}
+      <div className="min-h-screen bg-gradient-to-br from-white/40 via-white/30 to-white/20">
         {/* Header */}
         <header className="border-b bg-card/95 backdrop-blur-sm sticky top-0 z-50">
           <div className="container mx-auto px-4 py-4">
@@ -349,7 +363,7 @@ const Dashboard = () => {
         {/* Main Content */}
         <main className="container mx-auto px-4 py-8">
           <div className="grid gap-6">
-            {/* Welcome Section */}
+            {/* Welcome */}
             <Card className="bg-gradient-to-r from-primary to-accent text-white border-0 shadow-xl">
               <CardHeader className="pb-6">
                 <div className="flex items-center space-x-4">
@@ -358,7 +372,10 @@ const Dashboard = () => {
                   </div>
                   <div>
                     <CardTitle className="text-3xl font-bold">
-                      Welcome, {user.user_metadata?.full_name || user.email?.split("@")[0]}!
+                      Welcome,{" "}
+                      {user.user_metadata?.full_name ||
+                        user.email?.split("@")[0]}
+                      !
                     </CardTitle>
                     <CardDescription className="text-white/80 text-lg">
                       Ready to explore the wonders of India?
@@ -373,11 +390,25 @@ const Dashboard = () => {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-2xl font-bold flex items-center gap-2">
-                    <Navigation className="h-5 w-5 text-primary" /> Your Live Location
+                    <Navigation className="h-5 w-5 text-primary" /> Your Live
+                    Location
                   </CardTitle>
                   <CardDescription>
-                    Latitude: {location.lat.toFixed(6)}, Longitude: {location.lng.toFixed(6)}
+                    Latitude: {location.lat.toFixed(6)}, Longitude:{" "}
+                    {location.lng.toFixed(6)}
                   </CardDescription>
+                  {/* ✅ Safe / Unsafe Indicator */}
+                  <div className="mt-2">
+                    {isSafe ? (
+                      <span className="px-3 py-1 rounded-full bg-green-500 text-white font-semibold">
+                        ✅ Safe (Inside Geofence)
+                      </span>
+                    ) : (
+                      <span className="px-3 py-1 rounded-full bg-red-500 text-white font-semibold">
+                        ⚠️ Unsafe (Outside Geofence)
+                      </span>
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div ref={mapRef} className="w-full h-64 rounded-lg border" />
@@ -385,12 +416,15 @@ const Dashboard = () => {
               </Card>
             )}
 
-            {/* ✅ Destinations Section with OSM Search */}
+            {/* ✅ Destinations Section */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-2xl font-bold">Plan Your Destinations</CardTitle>
+                <CardTitle className="text-2xl font-bold">
+                  Plan Your Destinations
+                </CardTitle>
                 <CardDescription>
-                  Search for locations using OpenStreetMap and add them to your travel list.
+                  Search for locations using OpenStreetMap and add them to your
+                  travel list.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -447,4 +481,3 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
-
