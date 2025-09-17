@@ -64,6 +64,20 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  // ✅ Unlock audio after first user click
+  useEffect(() => {
+    const unlockAudio = () => {
+      if (beepRef.current) {
+        beepRef.current.play().then(() => {
+          beepRef.current?.pause();
+          beepRef.current.currentTime = 0;
+        });
+      }
+      window.removeEventListener("click", unlockAudio);
+    };
+    window.addEventListener("click", unlockAudio);
+  }, []);
+
   // ✅ Authentication
   useEffect(() => {
     const getUser = async () => {
@@ -338,7 +352,7 @@ const Dashboard = () => {
     <div
       className="min-h-screen bg-cover bg-center bg-no-repeat"
       style={{
-        backgroundImage: "url('/mountainbg.jpg')", // ✅ Place sea.jpg in /public
+        backgroundImage: "url('/mountainbg.jpg')",
       }}
     >
       {/* Hidden audio player for beep */}
