@@ -312,7 +312,7 @@ const Dashboard = () => {
     <div
       className="min-h-screen bg-cover bg-center bg-no-repeat"
       style={{
-        backgroundImage: "url('/images/mountain bg.png')", // bg images
+        backgroundImage: "url('/image/mountainbg.png')", // bg images
       }}
     >
       {/* Gradient overlay for readability */}
