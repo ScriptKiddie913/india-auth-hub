@@ -19,8 +19,18 @@ const AdminLogin = () => {
     e.preventDefault();
     setLoading(true);
 
-    // Check admin credentials
-    if (email === "tathastuagarwala26@gmail.com" && password === "Hotmeha21@21@") {
+    const enteredEmail = email.trim();
+    const enteredPassword = password.trim();
+
+    // Debug (only in development)
+    console.log("Entered Email:", enteredEmail);
+    console.log("Entered Password:", enteredPassword);
+
+    // ✅ Correct credentials
+    const adminEmail = "tathastuagarwala26@gmail.com";
+    const adminPassword = "Hotmeha21@21@";
+
+    if (enteredEmail === adminEmail && enteredPassword === adminPassword) {
       localStorage.setItem("adminAuth", "true");
       toast({
         title: "Admin Access Granted",
