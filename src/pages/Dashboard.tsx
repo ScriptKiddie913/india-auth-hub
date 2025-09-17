@@ -187,7 +187,7 @@ const Dashboard = () => {
 
                   // ✅ Play beep sound on exit
                   if (beepRef.current) {
-                    beepRef.current.currentTime = 1;
+                    beepRef.current.currentTime = 0;
                     beepRef.current.play().catch(() => {
                       console.warn("Autoplay prevented. User interaction required.");
                     });
