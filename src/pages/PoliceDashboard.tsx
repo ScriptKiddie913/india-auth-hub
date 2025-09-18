@@ -19,13 +19,13 @@ import PanicAlerts from "@/components/PanicAlerts";
 const PoliceDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const mapRef = useRef<HTMLDivElement | null>(null);
 
   /* -------- Authentication -------- */
   const [authState, setAuthState] = useState<"loading" | "auth" | "no-auth">(
     "loading"
   );
 
-  // Initial session check
   useEffect(() => {
     const checkSession = async () => {
       const { data } = await supabase.auth.getSession();
@@ -39,7 +39,6 @@ const PoliceDashboard: React.FC = () => {
     checkSession();
   }, [navigate]);
 
-  // Live auth state listener
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
@@ -64,8 +63,6 @@ const PoliceDashboard: React.FC = () => {
   };
 
   /* -------- Google Map -------- */
-  const mapRef = useRef<HTMLDivElement | null>(null);
-
   useEffect(() => {
     const initMap = () => {
       if (!mapRef.current || !(window as any).google) return;
@@ -83,16 +80,23 @@ const PoliceDashboard: React.FC = () => {
       });
     };
 
-    if ((window as any).google && (window as any).google.maps) {
-      initMap();
+    // Load Google Maps only once
+    if (!(window as any).google || !(window as any).google.maps) {
+      const scriptId = "google-maps-script";
+      if (!document.getElementById(scriptId)) {
+        const script = document.createElement("script");
+        script.id = scriptId;
+        script.src =
+          "https://maps.googleapis.com/maps/api/js?key=AIzaSyBU7z2W7aE4T6TSV7SqEk0UJiyjAC97UW8&libraries=places";
+        script.async = true;
+        script.defer = true;
+        script.onload = initMap;
+        document.body.appendChild(script);
+      } else {
+        document.getElementById(scriptId)?.addEventListener("load", initMap);
+      }
     } else {
-      const script = document.createElement("script");
-      script.src =
-        "https://maps.googleapis.com/maps/api/js?key=AIzaSyBU7z2W7aE4T6TSV7SqEk0UJiyjAC97UW8&libraries=places";
-      script.async = true;
-      script.defer = true;
-      script.onload = initMap;
-      document.body.appendChild(script);
+      initMap();
     }
   }, []);
 
