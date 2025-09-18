@@ -1,25 +1,21 @@
 // src/pages/PoliceDashboard.tsx
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import { useToast } from "@/hooks/use-toast";
+
+// Entities (replace with your actual API clients)
 import { User, PanicAlert, eFIR, Geofence } from "@/entities/all";
-import { MapContainer, TileLayer, Marker, Popup, Circle } from "react-leaflet";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
+// UI components
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  Shield,
-  Users,
-  Phone,
-  Map,
-  Activity,
-  Clock,
-  FileText,
-  CheckCircle,
-  UserX,
-  Navigation,
-  Search,
-} from "lucide-react";
-import { format } from "date-fns";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -28,6 +24,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
+// Icons
+import {
+  Shield,
+  Users,
+  Phone,
+  Map,
+  Search,
+} from "lucide-react";
+
+// Map
+import { MapContainer, TileLayer, Marker, Popup, Circle } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 
@@ -56,7 +64,10 @@ function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-export default function PoliceDashboard() {
+const PoliceDashboard: React.FC = () => {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
   const [policeUser, setPoliceUser] = useState<any>(null);
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [panicAlerts, setPanicAlerts] = useState<any[]>([]);
@@ -71,6 +82,15 @@ export default function PoliceDashboard() {
   ]);
   const mapRef = useRef<any>(null);
 
+  // ✅ Sign out
+  const handleLogout = () => {
+    toast({
+      title: "Signed out",
+      description: "You have been logged out.",
+    });
+    navigate("/police-signin");
+  };
+
   // ✅ Load live user + alert + eFIR data
   const loadLiveData = useCallback(async () => {
     try {
@@ -79,7 +99,6 @@ export default function PoliceDashboard() {
         PanicAlert.filter({ status: "active" }),
         eFIR.list("-created_date"),
       ]);
-
       const tourists = users.filter(
         (u: any) =>
           u.email !== "sagnik.saha.raptor@gmail.com" && !u.is_admin
@@ -92,7 +111,7 @@ export default function PoliceDashboard() {
     }
   }, []);
 
-  // ✅ Initialize geofences (with defaults if none exist)
+  // ✅ Initialize geofences
   const initializeGeofences = useCallback(async () => {
     try {
       const existing = await Geofence.list();
@@ -198,7 +217,7 @@ export default function PoliceDashboard() {
     });
   };
 
-  // ✅ Filtered users
+  // ✅ Filter users
   const filteredUsers = allUsers.filter((u) => {
     const matchSearch =
       !searchQuery ||
@@ -208,6 +227,7 @@ export default function PoliceDashboard() {
     return matchSearch && matchStatus;
   });
 
+  // ✅ Require auth
   if (!policeUser) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -295,6 +315,11 @@ export default function PoliceDashboard() {
                 </div>
               ))}
             </CardContent>
+            <CardContent>
+              <Button onClick={handleLogout} className="mt-4 w-full">
+                <Shield className="mr-2 h-4 w-4" /> Sign out
+              </Button>
+            </CardContent>
           </Card>
 
           {/* Map */}
@@ -355,5 +380,6 @@ export default function PoliceDashboard() {
       </div>
     </div>
   );
-}
+};
 
+export default PoliceDashboard;
