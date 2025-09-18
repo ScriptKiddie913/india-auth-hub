@@ -238,7 +238,7 @@ const Dashboard = () => {
     }
   }, [toast, destinations, user]);
 
-  // ✅ Update user location (replace old location)
+  // ✅ Update user location (replace old location) - called every 15 seconds
   const updateUserLocation = async (userId: string, latitude: number, longitude: number) => {
     try {
       // First, delete any existing location for this user
@@ -261,6 +261,19 @@ const Dashboard = () => {
       console.error("Error updating location:", error);
     }
   };
+
+  // ✅ Location tracking with 15-second interval
+  useEffect(() => {
+    if (!user || !location) return;
+
+    const locationInterval = setInterval(() => {
+      if (location && user) {
+        updateUserLocation(user.id, location.lat, location.lng);
+      }
+    }, 15000); // Update every 15 seconds
+
+    return () => clearInterval(locationInterval);
+  }, [user, location]);
 
   // ✅ Panic Button Handler
   const handlePanicButton = async () => {
@@ -456,6 +469,14 @@ const Dashboard = () => {
                   </p>
                 </div>
               </div>
+              <Button
+                variant="outline"
+                className="flex items-center space-x-2"
+                onClick={() => navigate('/profile')}
+              >
+                <User className="w-4 h-4" />
+                <span>Profile</span>
+              </Button>
               <Button
                 onClick={handleSignOut}
                 variant="outline"

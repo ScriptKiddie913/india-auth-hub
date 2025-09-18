@@ -6,9 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Shield, LogOut, AlertTriangle, MapPin, Users, Clock, HelpCircle } from "lucide-react";
+import { Shield, LogOut, AlertTriangle, MapPin, Users, Clock, HelpCircle, Phone, CheckCircle } from "lucide-react";
 import AdminMap from "@/components/AdminMap";
 import AdminHelpDesk from "@/components/AdminHelpDesk";
+import { format } from "date-fns";
 
 interface UserLocation {
   id: string;
@@ -16,6 +17,9 @@ interface UserLocation {
   latitude: number;
   longitude: number;
   created_at: string;
+  profiles?: {
+    full_name: string;
+  };
 }
 
 interface PanicAlert {
@@ -26,6 +30,9 @@ interface PanicAlert {
   longitude: number;
   status: string;
   created_at: string;
+  profiles?: {
+    full_name: string;
+  };
 }
 
 const AdminDashboard = () => {
@@ -89,7 +96,25 @@ const AdminDashboard = () => {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setUserLocations(data as UserLocation[] || []);
+
+      // Get profiles for user names
+      if (data && data.length > 0) {
+        const userIds = [...new Set(data.map(loc => loc.user_id))];
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select('user_id, full_name')
+          .in('user_id', userIds);
+
+        // Merge profiles with locations
+        const locationsWithProfiles = data.map(location => ({
+          ...location,
+          profiles: profiles?.find(p => p.user_id === location.user_id)
+        }));
+
+        setUserLocations(locationsWithProfiles as UserLocation[]);
+      } else {
+        setUserLocations([]);
+      }
     } catch (error: any) {
       toast({
         title: "Error fetching user locations",
@@ -107,7 +132,26 @@ const AdminDashboard = () => {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setPanicAlerts(data as PanicAlert[] || []);
+
+      // Get profiles for user names
+      if (data && data.length > 0) {
+        const userIds = [...new Set(data.map(alert => alert.user_id))];
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select('user_id, full_name')
+          .in('user_id', userIds);
+
+        // Merge profiles with alerts
+        const alertsWithProfiles = data.map(alert => ({
+          ...alert,
+          profiles: profiles?.find(p => p.user_id === alert.user_id)
+        }));
+
+        setPanicAlerts(alertsWithProfiles as PanicAlert[]);
+      } else {
+        setPanicAlerts([]);
+      }
+      
       setLoading(false);
     } catch (error: any) {
       toast({
@@ -263,7 +307,7 @@ const AdminDashboard = () => {
                               {alert.status}
                             </Badge>
                             <span className="font-semibold">
-                              User ID: {alert.user_id}
+                              {alert.profiles?.full_name || 'Unknown User'}
                             </span>
                             <span className="text-sm text-muted-foreground">
                               {new Date(alert.created_at).toLocaleString()}
@@ -321,7 +365,7 @@ const AdminDashboard = () => {
                       <div className="flex items-center justify-between">
                         <div>
                           <div className="font-semibold">
-                            User: {location.user_id}
+                            {location.profiles?.full_name || 'Unknown User'}
                           </div>
                           <div className="text-sm text-muted-foreground">
                             {new Date(location.created_at).toLocaleString()}
