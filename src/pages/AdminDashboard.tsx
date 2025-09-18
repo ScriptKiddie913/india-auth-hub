@@ -1,12 +1,21 @@
-/*  src/pages/admin-dashboard.tsx  */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Badge,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
 import {
   Shield,
   LogOut,
@@ -16,15 +25,12 @@ import {
   Clock,
   HelpCircle,
   Phone,
-  CheckCircle,
-  User,
-  FileText
+  FileText,
 } from "lucide-react";
 import AdminMap from "@/components/AdminMap";
 import AdminHelpDesk from "@/components/AdminHelpDesk";
-import { format } from "date-fns";
 
-/* ----- Types --------------------------------------------------- */
+/* Types --------------------------------------------------- */
 interface PanicAlert {
   id: string;
   user_id: string;
@@ -36,150 +42,136 @@ interface PanicAlert {
   profiles?: { full_name: string };
 }
 
-/* ----- Page Component ------------------------------------------ */
 const AdminDashboard = () => {
-  /* ----- State --------------------------------------------------- */
-  const [panicAlerts, setPanicAlerts] = useState<PanicAlert[]>([]);
-  const [allUsers, setAllUsers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("dashboard");
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  /* ----- Effect – Auth + initial data + realtime            */
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("dashboard");
+
+  /* Data -------------------------------------------------- */
+  const [panicAlerts, setPanicAlerts] = useState<PanicAlert[]>([]);
+  const [usersCount, setUsersCount] = useState<number>(0);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+
+  /* Auth + initial fetches --------------------------------- */
   useEffect(() => {
-    const adminAuth = localStorage.getItem("adminAuth");
-    if (!adminAuth) {
+    if (!localStorage.getItem("adminAuth")) {
       navigate("/admin");
       return;
     }
 
-    fetchPanicAlerts();
-    fetchAllUsers();
-
-    /* ---- Real‑time – panic alerts ---------------------------- */
-    const panicChannel = supabase
-      .channel("panic-alerts")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "panic_alerts",
-        },
-        (payload) => {
-          setPanicAlerts((prev) => [payload.new as PanicAlert, ...prev]);
-          toast({
-            title: "🚨 New Panic Alert!",
-            description: `Alert received from User ${payload.new.user_id}`,
-            variant: "destructive",
-          });
-        }
-      )
-      .subscribe();
-
-    return () => supabase.removeChannel(panicChannel);
-  }, [navigate, toast]);
-
-  /* ---- Fetch panic alerts ----------------------------------- */
-  const fetchPanicAlerts = async () => {
-    try {
+    const fetchPanicAlerts = async () => {
       const { data, error } = await supabase
-        .from("panic_alerts")
+        .from<PanicAlert>("panic_alerts")
         .select("*")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
 
-      if (data && data.length) {
-        const userIds = [...new Set(data.map((a) => a.user_id))];
-        const { data: profiles } = await supabase
-          .from("profiles")
-          .select("user_id, full_name")
-          .in("user_id", userIds);
+      /* Join with profiles for names */
+      const userIds = [...new Set(data?.map((a) => a.user_id) ?? [])];
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("user_id, full_name")
+        .in("user_id", userIds);
 
-        const merged = data.map((alert) => ({
-          ...alert,
-          profiles: profiles?.find((p) => p.user_id === alert.user_id),
-        }));
-        setPanicAlerts(merged as PanicAlert[]);
-      } else {
-        setPanicAlerts([]);
-      }
+      setPanicAlerts(
+        data?.map((a) => ({
+          ...a,
+          profiles: profiles?.find((p) => p.user_id === a.user_id),
+        })) ?? [],
+      );
       setLoading(false);
-    } catch (err: any) {
-      toast({
-        title: "Error fetching panic alerts",
-        description: err.message,
-        variant: "destructive",
-      });
-      setLoading(false);
-    }
-  };
+    };
 
-  /* ---- Fetch all profiles --------------------------------- */
-  const fetchAllUsers = async () => {
-    try {
+    /* Fetch users list for User‑Management tab */
+    const fetchAllUsers = async () => {
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setAllUsers(data || []);
-    } catch (err: any) {
-      toast({
-        title: "Error fetching users",
-        description: err.message,
-        variant: "destructive",
-      });
-    }
+      setAllUsers(data ?? []);
+    };
+
+    /* Realtime subscription for new alerts */
+    const alertChannel = supabase.channel("panic-alerts")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "panic_alerts" },
+        (payload) => {
+          setPanicAlerts((prev) => [
+            payload.new as PanicAlert,
+            ...prev,
+          ]);
+          toast({
+            title: "🚨 New Panic Alert!",
+            description: `Alert from User ${payload.new.user_id}`,
+            variant: "destructive",
+          });
+        },
+      ).subscribe();
+
+    /* Realtime user count – assumes a boolean `is_active` column */
+    const userChannel = supabase.channel("user-status")
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, async () => {
+        const { count } = await supabase
+          .from("profiles")
+          .select("*", { count: "exact" })
+          .eq("is_active", true);
+        setUsersCount(count ?? 0);
+      })
+      .subscribe();
+
+    /* Initial counts */
+    const loadCounts = async () => {
+      const { count } = await supabase
+        .from("profiles")
+        .select("*", { count: "exact" })
+        .eq("is_active", true);
+      setUsersCount(count ?? 0);
+      await fetchPanicAlerts();
+      await fetchAllUsers();
+    };
+    loadCounts();
+
+    return () => {
+      supabase.removeChannel(alertChannel);
+      supabase.removeChannel(userChannel);
+    };
+  }, [navigate, toast]);
+
+  /* Resolve alert ------------------------------------------ */
+  const handleResolveAlert = async (id: string) => {
+    const { error } = await supabase
+      .from("panic_alerts")
+      .update({ status: "resolved" })
+      .eq("id", id);
+    if (error) throw error;
+    setPanicAlerts((prev) =>
+      prev.map((a) => (a.id === id ? { ...a, status: "resolved" } : a)),
+    );
+    toast({ title: "Alert Resolved" });
   };
 
-  /* ---- Resolve panic alert --------------------------------- */
-  const handleResolveAlert = async (alertId: string) => {
-    try {
-      const { error } = await supabase
-        .from("panic_alerts")
-        .update({ status: "resolved" })
-        .eq("id", alertId);
-
-      if (error) throw error;
-
-      setPanicAlerts((prev) =>
-        prev.map((alert) =>
-          alert.id === alertId ? { ...alert, status: "resolved" } : alert
-        )
-      );
-      toast({
-        title: "Alert Resolved",
-        description: "Panic alert has been marked as resolved.",
-      });
-    } catch (err: any) {
-      toast({
-        title: "Error resolving alert",
-        description: err.message,
-        variant: "destructive",
-      });
-    }
-  };
-
-  /* ---- Logout --------------------------------------------- */
+  /* Logout ----------------------------------------------- */
   const handleLogout = () => {
     localStorage.removeItem("adminAuth");
     navigate("/admin");
   };
 
-  /* ----- Loading state -------------------------------------- */
+  /* Loading skeleton ------------------------------------- */
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary/20 to-accent/10">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-destructive"></div>
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-destructive" />
       </div>
     );
   }
 
-  /* ----- Main Layout ---------------------------------------- */
+  /* Main UI ------------------------------------------------ */
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-secondary/20 to-accent/10">
       {/* Header */}
@@ -211,63 +203,55 @@ const AdminDashboard = () => {
         </div>
       </header>
 
-      {/* Main Content */}
+      {/* Body */}
       <main className="container mx-auto px-4 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          {/* ── Tabs list ----------------------------------------- */}
+          {/* Tabs list */}
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
             <TabsTrigger value="users">User Management</TabsTrigger>
             <TabsTrigger value="helpdesk">Help Desk</TabsTrigger>
           </TabsList>
 
-          {/* ── Dashboard tab ------------------------------------ */}
+          {/* Dashboard tab */}
           <TabsContent value="dashboard" className="space-y-6">
-            {/* Stats cards – no active‑user count needed here */}
+            {/* Summary cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardHeader className="flex items-center justify-between pb-2">
                   <CardTitle className="text-sm font-medium">Active Users</CardTitle>
                   <Users className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">-</div>
-                </CardContent>
+                <CardContent className="text-2xl font-bold">{usersCount}</CardContent>
               </Card>
 
               <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardHeader className="flex items-center justify-between pb-2">
                   <CardTitle className="text-sm font-medium">Panic Alerts</CardTitle>
                   <AlertTriangle className="h-4 w-4 text-destructive" />
                 </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-destructive">
-                    {panicAlerts.filter((a) => a.status === "active").length}
-                  </div>
+                <CardContent className="text-2xl font-bold text-destructive">
+                  {panicAlerts.filter((a) => a.status === "active").length}
                 </CardContent>
               </Card>
 
               <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardHeader className="flex items-center justify-between pb-2">
                   <CardTitle className="text-sm font-medium">Total Alerts</CardTitle>
                   <Clock className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{panicAlerts.length}</div>
-                </CardContent>
+                <CardContent className="text-2xl font-bold">{panicAlerts.length}</CardContent>
               </Card>
             </div>
 
-            {/* Panic alerts list */}
+            {/* Alerts list */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-2xl font-bold flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-2xl font-bold">
                   <AlertTriangle className="h-6 w-6 text-destructive" />
                   Panic Alerts
                 </CardTitle>
-                <CardDescription>
-                  Monitor and respond to emergency alerts from users
-                </CardDescription>
+                <CardDescription>Monitor & respond to emergency alerts.</CardDescription>
               </CardHeader>
               <CardContent>
                 {panicAlerts.length === 0 ? (
@@ -288,27 +272,18 @@ const AdminDashboard = () => {
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-2">
-                              <Badge
-                                variant={
-                                  alert.status === "active" ? "destructive" : "secondary"
-                                }
-                              >
+                              <Badge variant={alert.status === "active" ? "destructive" : "secondary"}>
                                 {alert.status}
                               </Badge>
-                              <span className="font-semibold">
-                                {alert.profiles?.full_name ?? "Unknown User"}
-                              </span>
+                              <strong>{alert.profiles?.full_name ?? "Unknown User"}</strong>
                               <span className="text-sm text-muted-foreground">
                                 {new Date(alert.created_at).toLocaleString()}
                               </span>
                             </div>
                             <p className="text-sm mb-2">{alert.message}</p>
-                            <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                              <div className="flex items-center gap-1">
-                                <MapPin className="h-3 w-3" />
-                                {alert.latitude.toFixed(6)},
-                                {alert.longitude.toFixed(6)}
-                              </div>
+                            <div className="text-sm text-muted-foreground flex items-center gap-1">
+                              <MapPin className="h-3 w-3" />
+                              {alert.latitude.toFixed(6)},{alert.longitude.toFixed(6)}
                             </div>
                           </div>
                           {alert.status === "active" && (
@@ -328,136 +303,119 @@ const AdminDashboard = () => {
               </CardContent>
             </Card>
 
-            {/* Live user‑locations map  -  (the map fetches data itself) */}
+            {/* Map */}
             <AdminMap />
 
-            {/* Optional “raw list” card – can be omitted if you only want the map */}
+            {/* Optional location list */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-2xl font-bold flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-2xl font-bold">
                   <MapPin className="h-6 w-6 text-primary" />
                   User Locations List
                 </CardTitle>
                 <CardDescription>
-                  (Map component reads the data directly – this card is for reference only)
+                  The map component pulls all user locations directly.
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground text-center py-8">
-                  The map itself pulls all user locations from the database.
-                </p>
+              <CardContent className="text-muted-foreground text-center py-8">
+                Pulls live data from the database.
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* ── User Management tab --------------------------------- */}
+          {/* User Management tab */}
           <TabsContent value="users" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle className="text-2xl font-bold flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-2xl font-bold">
                   <Users className="h-6 w-6 text-primary" />
                   User Management
                 </CardTitle>
-                <CardDescription>
-                  View and manage all registered users and their profiles
-                </CardDescription>
+                <CardDescription>View & manage all registered profiles.</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  {allUsers.length === 0 ? (
-                    <p className="text-muted-foreground text-center py-8">No users found</p>
-                  ) : (
-                    <div className="grid gap-4">
-                      {allUsers.map((user) => (
-                        <Card key={user.id} className="hover:shadow-md transition-shadow">
-                          <CardContent className="p-6">
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-4 mb-4">
-                                  <div className="w-12 h-12 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center">
-                                    <User className="w-6 h-6 text-white" />
-                                  </div>
-                                  <div>
-                                    <h3 className="text-lg font-semibold">
-                                      {user.full_name || "No name provided"}
-                                    </h3>
-                                    <p className="text-sm text-muted-foreground">
-                                      Member since {new Date(user.created_at).toLocaleDateString()}
-                                    </p>
-                                  </div>
+                {allUsers.length === 0 ? (
+                  <p className="text-muted-foreground text-center py-8">No users found</p>
+                ) : (
+                  <div className="grid gap-4">
+                    {allUsers.map((user) => (
+                      <Card key={user.id} className="transition-shadow hover:shadow-md">
+                        <CardContent className="p-6">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-4 mb-4">
+                                <div className="w-12 h-12 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center">
+                                  <User className="text-white w-6 h-6" />
                                 </div>
-
-                                <div className="grid md:grid-cols-2 gap-4">
-                                  <div className="space-y-2">
-                                    <div className="flex items-center gap-2">
-                                      <Phone className="w-4 h-4 text-muted-foreground" />
-                                      <span className="text-sm">{user.phone || "No phone provided"}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <MapPin className="w-4 h-4 text-muted-foreground" />
-                                      <span className="text-sm">
-                                        {user.nationality || "No nationality provided"}
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="space-y-2">
-                                    {user.passport_number && (
-                                      <div className="flex items-center gap-2">
-                                        <FileText className="w-4 h-4 text-muted-foreground" />
-                                        <span className="text-sm">
-                                          Passport: {user.passport_number}
-                                        </span>
-                                      </div>
-                                    )}
-                                    {user.aadhaar_number && (
-                                      <div className="flex items-center gap-2">
-                                        <FileText className="w-4 h-4 text-muted-foreground" />
-                                        <span className="text-sm">
-                                          Aadhaar: {user.aadhaar_number}
-                                        </span>
-                                      </div>
-                                    )}
-                                  </div>
+                                <div>
+                                  <h3 className="text-lg font-semibold">
+                                    {user.full_name || "No name provided"}
+                                  </h3>
+                                  <p className="text-sm text-muted-foreground">
+                                    Member since {format(new Date(user.created_at), "MMM d, yyyy")}
+                                  </p>
                                 </div>
                               </div>
 
-                              <div className="flex flex-col gap-2 ml-4">
-                                {user.document_url && (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => window.open(user.document_url, "_blank")}
-                                  >
-                                    <FileText className="w-4 h-4 mr-2" />
-                                    View Document
-                                  </Button>
+                              <div className="grid md:grid-cols-2 gap-4 text-sm text-muted-foreground">
+                                <div className="flex items-center gap-2">
+                                  <Phone className="w-4 h-4" />
+                                  <span>{user.phone ?? "No phone"}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <MapPin className="w-4 h-4" />
+                                  <span>{user.nationality ?? "No nationality"}</span>
+                                </div>
+                                {user.passport_number && (
+                                  <div className="flex items-center gap-2">
+                                    <FileText className="w-4 h-4" />
+                                    <span>{user.passport_number}</span>
+                                  </div>
                                 )}
-                                <Badge variant={user.nationality ? "default" : "secondary"}>
-                                  {user.nationality ? "Verified" : "Incomplete"}
-                                </Badge>
+                                {user.aadhaar_number && (
+                                  <div className="flex items-center gap-2">
+                                    <FileText className="w-4 h-4" />
+                                    <span>{user.aadhaar_number}</span>
+                                  </div>
+                                )}
                               </div>
                             </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  )}
-                </div>
+
+                            <div className="flex flex-col gap-2 ml-4">
+                              {user.document_url && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => window.open(user.document_url)}
+                                >
+                                  <FileText className="w-4 h-4 mr-2" />
+                                  View Document
+                                </Button>
+                              )}
+                              <Badge variant={user.nationality ? "default" : "secondary"}>
+                                {user.nationality ? "Verified" : "Incomplete"}
+                              </Badge>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* ── Help Desk tab ------------------------------------- */}
+          {/* Help Desk tab */}
           <TabsContent value="helpdesk">
             <Card>
               <CardHeader>
-                <CardTitle className="text-2xl font-bold flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-2xl font-bold">
                   <HelpCircle className="h-6 w-6 text-primary" />
                   Help Desk Management
                 </CardTitle>
                 <CardDescription>
-                  Manage user support tickets and provide assistance.
+                  Manage support tickets and provide assistance.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -472,4 +430,3 @@ const AdminDashboard = () => {
 };
 
 export default AdminDashboard;
-
