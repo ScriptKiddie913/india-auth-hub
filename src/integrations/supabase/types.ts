@@ -201,11 +201,15 @@ export type Database = {
       }
       profiles: {
         Row: {
+          aadhaar_number: string | null
           avatar_url: string | null
           created_at: string
           date_of_birth: string | null
+          document_url: string | null
           full_name: string | null
           id: string
+          nationality: string | null
+          passport_number: string | null
           phone: string | null
           preferred_destinations: string[] | null
           travel_interests: string[] | null
@@ -213,11 +217,15 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          aadhaar_number?: string | null
           avatar_url?: string | null
           created_at?: string
           date_of_birth?: string | null
+          document_url?: string | null
           full_name?: string | null
           id?: string
+          nationality?: string | null
+          passport_number?: string | null
           phone?: string | null
           preferred_destinations?: string[] | null
           travel_interests?: string[] | null
@@ -225,11 +233,15 @@ export type Database = {
           user_id: string
         }
         Update: {
+          aadhaar_number?: string | null
           avatar_url?: string | null
           created_at?: string
           date_of_birth?: string | null
+          document_url?: string | null
           full_name?: string | null
           id?: string
+          nationality?: string | null
+          passport_number?: string | null
           phone?: string | null
           preferred_destinations?: string[] | null
           travel_interests?: string[] | null

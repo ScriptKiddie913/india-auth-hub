@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { User, LogOut, MapPin, Trash2, Navigation, AlertTriangle, HelpCircle } from "lucide-react";
+import { User, LogOut, MapPin, Trash2, Navigation, AlertTriangle, HelpCircle, Phone } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import HelpDesk from "@/components/HelpDesk";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
@@ -81,7 +81,7 @@ const Dashboard = () => {
     window.addEventListener("click", unlockAudio);
   }, []);
 
-  // ✅ Authentication
+  // ✅ Authentication and profile check
   useEffect(() => {
     const getUser = async () => {
       const {
@@ -89,6 +89,20 @@ const Dashboard = () => {
       } = await supabase.auth.getUser();
       if (user) {
         setUser(user);
+        
+        // Check if user has completed profile
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('nationality, phone')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        
+        // If user doesn't have nationality or phone, redirect to profile completion
+        if (!profile || !profile.nationality || !profile.phone) {
+          navigate('/profile-completion');
+          return;
+        }
+        
         await fetchDestinations(user.id);
       } else {
         navigate("/signin");
@@ -518,7 +532,14 @@ const Dashboard = () => {
                         </CardDescription>
                       </div>
                     </div>
-                    {/* ✅ Panic Button */}
+                    <Button
+                      onClick={handlePanicButton}
+                      size="lg"
+                      className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-bold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 animate-pulse"
+                    >
+                      <Phone className="w-6 h-6 mr-2" />
+                      🚨 PANIC ALERT
+                    </Button>
                     <Button
                       onClick={handlePanicButton}
                       variant="destructive"

@@ -9,6 +9,8 @@ import SignUp from "./pages/SignUp";
 import Dashboard from "./pages/Dashboard";
 import AdminLogin from "./pages/AdminLogin";
 import AdminDashboard from "./pages/AdminDashboard";
+import Profile from "./pages/Profile";
+import ProfileCompletion from "./components/ProfileCompletion";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -26,6 +28,8 @@ const App = () => (
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/admin" element={<AdminLogin />} />
           <Route path="/admin-dashboard" element={<AdminDashboard />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/profile-completion" element={<ProfileCompletion />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

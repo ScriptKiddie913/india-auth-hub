@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { User, Phone, Mail, MapPin, FileText, ArrowLeft, Edit } from "lucide-react";
 
 interface ProfileData {
-  full_name: string;
+  full_name: string | null;
   phone: string | null;
   nationality: string | null;
   passport_number: string | null;
@@ -41,7 +41,7 @@ const Profile = () => {
 
       const { data: profileData, error } = await supabase
         .from('profiles')
-        .select('full_name, phone, nationality, passport_number, aadhaar_number, document_url, created_at')
+        .select('*')
         .eq('user_id', authUser.id)
         .maybeSingle();
 
@@ -116,7 +116,7 @@ const Profile = () => {
                 <User className="w-12 h-12 text-white" />
               </div>
               <div className="flex-1">
-                <h1 className="text-3xl font-bold mb-2">{profile.full_name}</h1>
+                <h1 className="text-3xl font-bold mb-2">{profile.full_name || 'User Profile'}</h1>
                 <p className="text-white/80 text-lg mb-4">{user?.email}</p>
                 <div className="flex gap-4 text-sm">
                   <div className="flex items-center gap-2">
@@ -161,7 +161,7 @@ const Profile = () => {
                   <div className="space-y-4">
                     <div>
                       <label className="text-sm font-medium text-muted-foreground">Full Name</label>
-                      <p className="text-lg font-medium">{profile.full_name}</p>
+                      <p className="text-lg font-medium">{profile.full_name || 'Not provided'}</p>
                     </div>
                     <div>
                       <label className="text-sm font-medium text-muted-foreground">Email Address</label>
@@ -174,7 +174,7 @@ const Profile = () => {
                       <label className="text-sm font-medium text-muted-foreground">Phone Number</label>
                       <p className="text-lg font-medium flex items-center gap-2">
                         <Phone className="w-4 h-4" />
-                        {profile.phone}
+                        {profile.phone || 'Not provided'}
                       </p>
                     </div>
                   </div>
@@ -184,7 +184,7 @@ const Profile = () => {
                       <label className="text-sm font-medium text-muted-foreground">Nationality</label>
                       <p className="text-lg font-medium flex items-center gap-2">
                         <MapPin className="w-4 h-4" />
-                        {profile.nationality}
+                        {profile.nationality || 'Not provided'}
                       </p>
                     </div>
                     {profile.passport_number && (
