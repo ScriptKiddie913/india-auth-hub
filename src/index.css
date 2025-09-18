@@ -41,9 +41,21 @@ All colors MUST be HSL.
     --ring: 25 95% 53%;
 
     /* Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(25 95% 53%), hsl(35 100% 65%));
-    --gradient-royal: linear-gradient(135deg, hsl(215 85% 60%), hsl(240 75% 50%));
-    --gradient-sunset: linear-gradient(180deg, hsl(25 95% 53%), hsl(15 90% 60%));
+    --gradient-primary: linear-gradient(
+      135deg,
+      hsl(25 95% 53%),
+      hsl(35 100% 65%)
+    );
+    --gradient-royal: linear-gradient(
+      135deg,
+      hsl(215 85% 60%),
+      hsl(240 75% 50%)
+    );
+    --gradient-sunset: linear-gradient(
+      180deg,
+      hsl(25 95% 53%),
+      hsl(15 90% 60%)
+    );
 
     --radius: 0.75rem;
 
@@ -106,4 +118,17 @@ All colors MUST be HSL.
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* ✅ Google Translate Styling */
+.goog-te-banner-frame.skiptranslate,
+.goog-logo-link {
+  display: none !important;
+}
+body {
+  top: 0px !important;
+}
+
+#google_translate_element select {
+  @apply bg-gradient-to-r from-orange-500 to-yellow-400 text-white font-semibold rounded-xl px-4 py-2 shadow-lg cursor-pointer;
 }
