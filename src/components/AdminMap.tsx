@@ -1,9 +1,10 @@
 /*  src/components/AdminMap.tsx  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MapPin, Users } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
-/* ------- Types --------------------------------------------------- */
+/* ----- Types --------------------------------------------------- */
 interface UserLocation {
   id: string;
   user_id: string;
@@ -13,36 +14,83 @@ interface UserLocation {
   profiles?: { full_name: string };
 }
 
-interface AdminMapProps {
-  userLocations: UserLocation[];
-}
+/* ----- Map Component ------------------------------------------ */
+const AdminMap = () => {
+  /* ----- Local state ------------------------------------------- */
+  const [userLocations, setUserLocations] = useState<UserLocation[]>([]);
 
-/* ------- Google Map Component ----------------------------------- */
-const AdminMap = ({ userLocations }: AdminMapProps) => {
   /* ----- Refs --------------------------------------------------- */
   const mapRef = useRef<google.maps.Map | null>(null);
   const mapElement = useRef<HTMLDivElement | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
 
-  /* ----- Load Google Maps script ----------------------------------------------------- */
+  /* ----- Fetch user locations from Supabase -------------------- */
+  const fetchUserLocations = async () => {
+    const { data, error } = await supabase
+      .from("user_locations")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Supabase location fetch error:", error);
+      return;
+    }
+
+    /* Merge user names via profiles table (just like the dashboard) */
+    if (data && data.length) {
+      const ids = [...new Set(data.map((l) => l.user_id))];
+      const { data: pro } = await supabase
+        .from("profiles")
+        .select("user_id, full_name")
+        .in("user_id", ids);
+
+      const merged = data.map((loc) => ({
+        ...loc,
+        profiles: pro?.find((p) => p.user_id === loc.user_id),
+      }));
+      setUserLocations(merged as UserLocation[]);
+    } else {
+      setUserLocations([]);
+    }
+  };
+
+  /* ----- Real‑time subscription ------------------------------- */
   useEffect(() => {
-    /* 1. If the api is already loaded, just initialise the map */
+    fetchUserLocations(); // initial load
+
+    const channel = supabase
+      .channel("user-locations")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "user_locations",
+        },
+        () => fetchUserLocations()
+      )
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  }, []);
+
+  /* ----- Load Google Maps script ------------------------------ */
+  useEffect(() => {
     if (window.google?.maps?.Map) {
       initMap();
       return;
     }
 
-    /* 2. If it has not yet loaded create a new script tag */
     const script = document.createElement("script");
     script.src =
-      "https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY"; // <‑‑ put your key here
+      "https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY";
     script.async = true;
     script.defer = true;
     script.onload = initMap;
     document.head.appendChild(script);
   }, []);
 
-  /* ----- Initialise map ----------------------------------------------------- */
+  /* ----- Initialise map --------------------------------------- */
   const initMap = () => {
     if (!mapElement.current || !window.google) return;
 
@@ -54,21 +102,17 @@ const AdminMap = ({ userLocations }: AdminMapProps) => {
     mapRef.current = new window.google.maps.Map(mapElement.current, {
       center: initialCenter,
       zoom: userLocations.length ? 13 : 2,
-      mapId: "YOUR_CUSTOM_MAP_ID_IF_DESIRED", // optional
     });
 
-    /* Add markers for the current data set */
     addMarkers(userLocations);
   };
 
-  /* ----- Add / Update markers ----------------------------------------------------- */
+  /* ----- Add / update markers --------------------------------- */
   const addMarkers = (locations: UserLocation[]) => {
-    /* 1️⃣ Remove old markers */
     markersRef.current.forEach((m) => m.setMap(null));
     markersRef.current = [];
 
-    /* 2️⃣ Create new ones */
-    const newMarkers: google.maps.Marker[] = locations.map((loc) => {
+    const newMarkers = locations.map((loc) => {
       const marker = new window.google.maps.Marker({
         position: { lat: loc.latitude, lng: loc.longitude },
         map: mapRef.current!,
@@ -79,7 +123,6 @@ const AdminMap = ({ userLocations }: AdminMapProps) => {
         },
       });
 
-      /* Optional: add a small infowindow */
       const info = new window.google.maps.InfoWindow({
         content: `<strong>${loc.profiles?.full_name ?? "Unknown User"}</strong><br>${new Date(
           loc.created_at
@@ -100,13 +143,13 @@ const AdminMap = ({ userLocations }: AdminMapProps) => {
     markersRef.current = newMarkers;
   };
 
-  /* ----- Re‑render markers when data changes ------------------------------------ */
+  /* ----- Re‑render markers when location data changes ----- */
   useEffect(() => {
     if (!mapRef.current) return;
     addMarkers(userLocations);
   }, [userLocations]);
 
-  /* ----- Render --------------------------------------------------- */
+  /* ----- Render ---------------------------------------------- */
   return (
     <Card>
       <CardHeader>
@@ -120,16 +163,13 @@ const AdminMap = ({ userLocations }: AdminMapProps) => {
         </div>
       </CardHeader>
       <CardContent>
-        <div
-          ref={mapElement}
-          className="w-full h-96 rounded-lg border bg-muted/10"
-        />
+        <div ref={mapElement} className="w-full h-96 rounded-lg border bg-muted/10" />
       </CardContent>
     </Card>
   );
 };
 
-/* ------- Helper : pluralise ‘user’ ------------------------------ */
+/* ----- Helper: pluralise ‘user’ -------------------------------- */
 function s(n: number): string {
   return n === 1 ? "" : "s";
 }
