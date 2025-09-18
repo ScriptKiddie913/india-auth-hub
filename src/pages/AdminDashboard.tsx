@@ -3,10 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Shield, LogOut, AlertTriangle, MapPin, Users, Clock } from "lucide-react";
+import { Shield, LogOut, AlertTriangle, MapPin, Users, Clock, HelpCircle } from "lucide-react";
 import AdminMap from "@/components/AdminMap";
+import AdminHelpDesk from "@/components/AdminHelpDesk";
 
 interface UserLocation {
   id: string;
@@ -36,6 +38,7 @@ const AdminDashboard = () => {
   const [userLocations, setUserLocations] = useState<UserLocation[]>([]);
   const [panicAlerts, setPanicAlerts] = useState<PanicAlert[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("dashboard");
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -88,9 +91,13 @@ const AdminDashboard = () => {
     try {
       const { data, error } = await supabase
         .from("user_locations")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(50);
+        .select(`
+          *,
+          profiles:user_id (
+            full_name
+          )
+        `)
+        .order("created_at", { ascending: false });
 
       if (error) throw error;
       setUserLocations(data || []);
@@ -107,7 +114,12 @@ const AdminDashboard = () => {
     try {
       const { data, error } = await supabase
         .from("panic_alerts")
-        .select("*")
+        .select(`
+          *,
+          profiles:user_id (
+            full_name
+          )
+        `)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -197,39 +209,45 @@ const AdminDashboard = () => {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
-        <div className="grid gap-6">
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Active Users</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{userLocations.length}</div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Panic Alerts</CardTitle>
-                <AlertTriangle className="h-4 w-4 text-destructive" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-destructive">{panicAlerts.filter(a => a.status === 'active').length}</div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Alerts</CardTitle>
-                <Clock className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{panicAlerts.length}</div>
-              </CardContent>
-            </Card>
-          </div>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+            <TabsTrigger value="helpdesk">Help Desk</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="dashboard" className="space-y-6">
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Active Users</CardTitle>
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{userLocations.length}</div>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Panic Alerts</CardTitle>
+                  <AlertTriangle className="h-4 w-4 text-destructive" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-destructive">{panicAlerts.filter(a => a.status === 'active').length}</div>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Total Alerts</CardTitle>
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{panicAlerts.length}</div>
+                </CardContent>
+              </Card>
+            </div>
 
           {/* Panic Alerts */}
           <Card>
@@ -319,7 +337,7 @@ const AdminDashboard = () => {
                       <div className="flex items-center justify-between">
                         <div>
                           <div className="font-semibold">
-                            User ID: {location.user_id}
+                            {location.profiles?.full_name || `User ${location.user_id}`}
                           </div>
                           <div className="text-sm text-muted-foreground">
                             {new Date(location.created_at).toLocaleString()}
@@ -336,7 +354,25 @@ const AdminDashboard = () => {
               )}
             </CardContent>
           </Card>
-        </div>
+          </TabsContent>
+          
+          <TabsContent value="helpdesk">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-2xl font-bold flex items-center gap-2">
+                  <HelpCircle className="h-6 w-6 text-primary" />
+                  Help Desk Management
+                </CardTitle>
+                <CardDescription>
+                  Manage user support tickets and provide assistance.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <AdminHelpDesk />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
   );

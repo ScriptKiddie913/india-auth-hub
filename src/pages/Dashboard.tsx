@@ -10,7 +10,9 @@ import {
 } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { User, LogOut, MapPin, Trash2, Navigation } from "lucide-react";
+import { User, LogOut, MapPin, Trash2, Navigation, AlertTriangle, HelpCircle } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import HelpDesk from "@/components/HelpDesk";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 interface Destination {
@@ -47,6 +49,7 @@ const Dashboard = () => {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [isSafe, setIsSafe] = useState(true); // ✅ Safe / Unsafe status
+  const [activeTab, setActiveTab] = useState("dashboard");
 
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<google.maps.Map | null>(null);
@@ -215,6 +218,11 @@ const Dashboard = () => {
             // ✅ Update Safe/Unsafe
             setIsSafe(insideAnyGeofence);
           }
+
+          // ✅ Update user location in database (replace old location)
+          if (user) {
+            updateUserLocation(user.id, lat, lng);
+          }
         },
         (err) => {
           console.error("Error getting location:", err);
@@ -229,6 +237,61 @@ const Dashboard = () => {
       return () => navigator.geolocation.clearWatch(watchId);
     }
   }, [toast, destinations, user]);
+
+  // ✅ Update user location (replace old location)
+  const updateUserLocation = async (userId: string, latitude: number, longitude: number) => {
+    try {
+      // First, delete any existing location for this user
+      await supabase
+        .from("user_locations")
+        .delete()
+        .eq("user_id", userId);
+      
+      // Then insert the new location
+      const { error } = await supabase
+        .from("user_locations")
+        .insert({
+          user_id: userId,
+          latitude,
+          longitude,
+        });
+      
+      if (error) throw error;
+    } catch (error: any) {
+      console.error("Error updating location:", error);
+    }
+  };
+
+  // ✅ Panic Button Handler
+  const handlePanicButton = async () => {
+    if (!user || !location) return;
+    
+    try {
+      const { error } = await supabase
+        .from("panic_alerts")
+        .insert({
+          user_id: user.id,
+          message: "Emergency! User needs immediate assistance.",
+          latitude: location.lat,
+          longitude: location.lng,
+          status: "active",
+        });
+      
+      if (error) throw error;
+      
+      toast({
+        title: "🚨 Panic Alert Sent!",
+        description: "Emergency services have been notified of your location.",
+        variant: "destructive",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error sending panic alert",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
 
   // ✅ Fetch destinations from Supabase
   const fetchDestinations = async (userId: string) => {
@@ -407,28 +470,46 @@ const Dashboard = () => {
 
         {/* Main Content */}
         <main className="container mx-auto px-4 py-8">
-          <div className="grid gap-6">
-            {/* Welcome */}
-            <Card className="bg-gradient-to-r from-primary to-accent text-white border-0 shadow-xl">
-              <CardHeader className="pb-6">
-                <div className="flex items-center space-x-4">
-                  <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
-                    <User className="w-8 h-8" />
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+              <TabsTrigger value="helpdesk">Help & Support</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="dashboard" className="space-y-6">
+              {/* Welcome */}
+              <Card className="bg-gradient-to-r from-primary to-accent text-white border-0 shadow-xl">
+                <CardHeader className="pb-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-4">
+                      <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
+                        <User className="w-8 h-8" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-3xl font-bold">
+                          Welcome,{" "}
+                          {user.user_metadata?.full_name ||
+                            user.email?.split("@")[0]}
+                          !
+                        </CardTitle>
+                        <CardDescription className="text-white/80 text-lg">
+                          Ready to explore the wonders of India?
+                        </CardDescription>
+                      </div>
+                    </div>
+                    {/* ✅ Panic Button */}
+                    <Button
+                      onClick={handlePanicButton}
+                      variant="destructive"
+                      size="lg"
+                      className="bg-red-600 hover:bg-red-700 text-white font-bold animate-pulse"
+                    >
+                      <AlertTriangle className="w-5 h-5 mr-2" />
+                      PANIC
+                    </Button>
                   </div>
-                  <div>
-                    <CardTitle className="text-3xl font-bold">
-                      Welcome,{" "}
-                      {user.user_metadata?.full_name ||
-                        user.email?.split("@")[0]}
-                      !
-                    </CardTitle>
-                    <CardDescription className="text-white/80 text-lg">
-                      Ready to explore the wonders of India?
-                    </CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-            </Card>
+                </CardHeader>
+              </Card>
 
             {/* ✅ Real-Time Location Map */}
             {location && (
@@ -525,7 +606,25 @@ const Dashboard = () => {
                 )}
               </CardContent>
             </Card>
-          </div>
+            </TabsContent>
+            
+            <TabsContent value="helpdesk">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-2xl font-bold flex items-center gap-2">
+                    <HelpCircle className="h-6 w-6 text-primary" />
+                    Help & Support
+                  </CardTitle>
+                  <CardDescription>
+                    Get assistance from our support team. You can send messages and images.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <HelpDesk />
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </main>
       </div>
     </div>

@@ -19,6 +19,13 @@ declare namespace google {
       setMap(map: Map | null): void;
     }
 
+    class Circle {
+      constructor(opts?: CircleOptions);
+      setMap(map: Map | null): void;
+      setCenter(center: LatLng | LatLngLiteral): void;
+      setRadius(radius: number): void;
+    }
+
     interface MapOptions {
       center?: LatLng | LatLngLiteral;
       zoom?: number;
@@ -29,6 +36,17 @@ declare namespace google {
       position?: LatLng | LatLngLiteral;
       map?: Map;
       title?: string;
+    }
+
+    interface CircleOptions {
+      strokeColor?: string;
+      strokeOpacity?: number;
+      strokeWeight?: number;
+      fillColor?: string;
+      fillOpacity?: number;
+      map?: Map;
+      center?: LatLng | LatLngLiteral;
+      radius?: number;
     }
 
     interface LatLng {
