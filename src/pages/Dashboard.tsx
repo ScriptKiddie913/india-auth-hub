@@ -461,67 +461,76 @@ const Dashboard = () => {
               </Card>
             )}
 
-            {/* ✅ Destinations Section */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-2xl font-bold">
-                  Plan Your Destinations
-                </CardTitle>
-                <CardDescription>
-                  Search for locations using Photon API and add them to your
-                  travel list.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="relative mb-4">
-                  <input
-                    type="text"
-                    value={query}
-                    onChange={(e) => debouncedFetchSuggestions(e.target.value)}
-                    placeholder="Search for a location..."
-                    className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                  />
-                  {suggestions.length > 0 && (
-                    <ul className="absolute z-10 bg-white border rounded-md shadow-md w-full mt-1 max-h-60 overflow-auto">
-                      {suggestions.map((place, index) => (
-                        <li
-                          key={index}
-                          className="px-4 py-2 hover:bg-secondary cursor-pointer flex items-center space-x-2"
-                          onClick={() => addDestination(place)}
-                        >
-                          <MapPin className="w-4 h-4 text-primary" />
-                          <span>
-                            {place.properties.name ||
-                              place.properties.city ||
-                              place.properties.country}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
+      {/* ✅ Destinations Section */}
+<Card>
+  <CardHeader>
+    <CardTitle className="text-2xl font-bold">
+      Plan Your Destinations
+    </CardTitle>
+    <CardDescription>
+      Search for locations using Photon API and add them to your travel list.
+    </CardDescription>
+  </CardHeader>
+  <CardContent>
+    <div className="relative mb-4">
+      {/* Search Input */}
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)} // instant typing
+        placeholder="Search for a location..."
+        className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-base"
+      />
 
-                {destinations.length > 0 && (
-                  <ul className="space-y-2">
-                    {destinations.map((dest) => (
-                      <li
-                        key={dest.id}
-                        className="flex justify-between items-center bg-secondary/20 px-4 py-2 rounded-md"
-                      >
-                        <span>{dest.name}</span>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeDestination(dest.id)}
-                        >
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
+      {/* Suggestions Dropdown */}
+      {suggestions.length > 0 && (
+        <ul className="absolute z-20 bg-white border rounded-lg shadow-lg w-full mt-1 max-h-72 overflow-y-auto">
+          {suggestions.map((place, index) => (
+            <li
+              key={index}
+              className="px-4 py-3 hover:bg-secondary/30 cursor-pointer flex items-center space-x-3 text-base"
+              onClick={() => addDestination(place)}
+            >
+              <MapPin className="w-5 h-5 text-primary shrink-0" />
+              <span className="truncate">
+                {place.properties.name ||
+                  place.properties.city ||
+                  place.properties.country}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+
+    {/* Saved Destinations List */}
+    {destinations.length > 0 ? (
+      <ul className="space-y-3">
+        {destinations.map((dest) => (
+          <li
+            key={dest.id}
+            className="flex justify-between items-center bg-secondary/20 px-4 py-3 rounded-lg text-base"
+          >
+            <span className="truncate">{dest.name}</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => removeDestination(dest.id)}
+              className="hover:bg-destructive/10"
+            >
+              <Trash2 className="w-5 h-5 text-destructive" />
+            </Button>
+          </li>
+        ))}
+      </ul>
+    ) : (
+      <p className="text-muted-foreground text-center py-4">
+        No destinations saved yet. Start searching above!
+      </p>
+    )}
+  </CardContent>
+</Card>
+
           </div>
         </main>
       </div>
