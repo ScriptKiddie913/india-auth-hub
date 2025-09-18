@@ -1,3 +1,4 @@
+// src/App.tsx
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -15,8 +16,9 @@ import Profile from "./pages/Profile";
 import ProfileCompletion from "./components/ProfileCompletion";
 import NotFound from "./pages/NotFound";
 
-// Import the Police sign‑in page here
+// New imports – police pages
 import PoliceSignIn from "./pages/PoliceSignIn";
+import PoliceDashboard from "./pages/PoliceDashboard";
 
 const queryClient = new QueryClient();
 
@@ -28,41 +30,39 @@ const queryClient = new QueryClient();
  * 3. Renders global toast components (`Toaster` and `Sonner`).
  * 4. Declares a BrowserRouter with every URL fragment that the app knows.
  */
-const App: React.FC = () => {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        {/* Global toast notifications */}
-        <Toaster />
-        <Sonner />
+const App: React.FC = () => (
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      {/* Global toast notifications */}
+      <Toaster />
+      <Sonner />
 
-        <BrowserRouter>
-          <Routes>
-            {/* Public routes */}
-            <Route path="/" element={<Index />} />
-            <Route path="/signin" element={<SignIn />} />
-            <Route path="/signup" element={<SignUp />} />
+      <BrowserRouter>
+        <Routes>
+          {/* Public routes */}
+          <Route path="/" element={<Index />} />
+          <Route path="/signin" element={<SignIn />} />
+          <Route path="/signup" element={<SignUp />} />
 
-            {/* User account routes */}
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/profile-completion" element={<ProfileCompletion />} />
+          {/* User account routes */}
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/profile-completion" element={<ProfileCompletion />} />
 
-            {/* Administration routes */}
-            <Route path="/admin" element={<AdminLogin />} />
-            <Route path="/admin-dashboard" element={<AdminDashboard />} />
+          {/* Administration routes */}
+          <Route path="/admin" element={<AdminLogin />} />
+          <Route path="/admin-dashboard" element={<AdminDashboard />} />
 
-            {/* Police‑specific route – this is what the button in SignIn.tsx navigates to */}
-            <Route path="/police-signin" element={<PoliceSignIn />} />
+          {/* Police‑specific routes */}
+          <Route path="/police-signin" element={<PoliceSignIn />} />
+          <Route path="/police-dashboard" element={<PoliceDashboard />} />
 
-            {/* Catch‑all – renders the 404 page when no other route matches */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
-    </QueryClientProvider>
-  );
-};
+          {/* Catch‑all – renders the 404 page when no other route matches */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </BrowserRouter>
+    </TooltipProvider>
+  </QueryClientProvider>
+);
 
 export default App;
-
