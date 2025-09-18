@@ -13,29 +13,39 @@ import Profile from "./pages/Profile";
 import ProfileCompletion from "./components/ProfileCompletion";
 import NotFound from "./pages/NotFound";
 
+// New imports
+import PoliceSignIn from "./pages/PoliceSignIn";
+import PoliceDashboardPage from "./pages/PoliceDashboard";
+
 const queryClient = new QueryClient();
 
 const App = () => (
-<QueryClientProvider client={queryClient}>
-<TooltipProvider>
-<Toaster />
-<Sonner />
-<BrowserRouter>
-<Routes>
-<Route path="/" element={<Index />} />
-<Route path="/signin" element={<SignIn />} />
-<Route path="/signup" element={<SignUp />} />
-<Route path="/dashboard" element={<Dashboard />} />
-<Route path="/admin" element={<AdminLogin />} />
-<Route path="/admin-dashboard" element={<AdminDashboard />} />
-<Route path="/profile" element={<Profile />} />
-<Route path="/profile-completion" element={<ProfileCompletion />} />
-{/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-<Route path="*" element={<NotFound />} />
-</Routes>
-</BrowserRouter>
-</TooltipProvider>
-</QueryClientProvider>
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Index />} />
+          <Route path="/signin" element={<SignIn />} />
+          <Route path="/signup" element={<SignUp />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/admin" element={<AdminLogin />} />
+          <Route path="/admin-dashboard" element={<AdminDashboard />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/profile-completion" element={<ProfileCompletion />} />
+
+          {/* Police routes */}
+          <Route path="/police-signin" element={<PoliceSignIn />} />
+          <Route path="/police-dashboard" element={<PoliceDashboardPage />} />
+
+          {/* Catch-all */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </BrowserRouter>
+    </TooltipProvider>
+  </QueryClientProvider>
 );
 
 export default App;
+
