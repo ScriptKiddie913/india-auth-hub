@@ -1,5 +1,5 @@
 /* src/pages/PoliceDashboard.tsx */
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -13,7 +13,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Shield, LogOut, AlertTriangle } from "lucide-react";
 
-import PoliceMap from "@/components/PoliceMap";
 import EFIRForm from "@/components/EFIRForm";
 import PanicAlerts from "@/components/PanicAlerts";
 
@@ -23,10 +22,10 @@ const PoliceDashboard: React.FC = () => {
 
   /* -------- Authentication -------- */
   const [authState, setAuthState] = useState<"loading" | "auth" | "no-auth">(
-    "loading",
+    "loading"
   );
 
-  // 1️⃣  Initial session check
+  // Initial session check
   useEffect(() => {
     const checkSession = async () => {
       const { data } = await supabase.auth.getSession();
@@ -40,7 +39,7 @@ const PoliceDashboard: React.FC = () => {
     checkSession();
   }, [navigate]);
 
-  // 2️⃣  Live auth state listener – redirects immediately on logout
+  // Live auth state listener
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
@@ -52,7 +51,7 @@ const PoliceDashboard: React.FC = () => {
           });
           navigate("/police-signin");
         }
-      },
+      }
     );
     return () => listener?.unsubscribe();
   }, [navigate, toast]);
@@ -63,6 +62,39 @@ const PoliceDashboard: React.FC = () => {
     toast({ title: "Signed out", description: "You have been logged out." });
     navigate("/police-signin");
   };
+
+  /* -------- Google Map -------- */
+  const mapRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const initMap = () => {
+      if (!mapRef.current || !(window as any).google) return;
+
+      const map = new (window as any).google.maps.Map(mapRef.current, {
+        center: { lat: 22.5726, lng: 88.3639 }, // Kolkata
+        zoom: 12,
+      });
+
+      // Example marker
+      new (window as any).google.maps.Marker({
+        position: { lat: 22.5726, lng: 88.3639 },
+        map,
+        title: "Central Police Station",
+      });
+    };
+
+    if ((window as any).google && (window as any).google.maps) {
+      initMap();
+    } else {
+      const script = document.createElement("script");
+      script.src =
+        "https://maps.googleapis.com/maps/api/js?key=AIzaSyBU7z2W7aE4T6TSV7SqEk0UJiyjAC97UW8&libraries=places";
+      script.async = true;
+      script.defer = true;
+      script.onload = initMap;
+      document.body.appendChild(script);
+    }
+  }, []);
 
   /* -------- Loading state -------- */
   if (authState === "loading") {
@@ -93,9 +125,23 @@ const PoliceDashboard: React.FC = () => {
 
         {/* Main content – three column layout */}
         <CardContent className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1"><PoliceMap /></div>
-          <div className="lg:col-span-1"><EFIRForm /></div>
-          <div className="lg:col-span-1"><PanicAlerts /></div>
+          {/* Google Map */}
+          <div className="lg:col-span-1">
+            <div
+              ref={mapRef}
+              className="w-full h-[400px] rounded-lg shadow-md border"
+            />
+          </div>
+
+          {/* e-FIR form */}
+          <div className="lg:col-span-1">
+            <EFIRForm />
+          </div>
+
+          {/* Panic alerts */}
+          <div className="lg:col-span-1">
+            <PanicAlerts />
+          </div>
         </CardContent>
 
         {/* Footer – logout */}
