@@ -1,13 +1,22 @@
-/*  src/components/EFIRForm.tsx  */
+/* src/components/EFIRForm.tsx */
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Button } from "@/components/ui/button";
+
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { FileUploadIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
-const EFIRForm = () => {
+import { Upload } from "lucide-react";   // <-- correct icon name
+
+const EFIRForm: React.FC = () => {
   const { toast } = useToast();
 
   const [caseNumber, setCaseNumber] = useState("");
@@ -20,14 +29,14 @@ const EFIRForm = () => {
     setSubmitting(true);
 
     try {
-      let photoUrl = null;
+      let photoUrl: string | null = null;
       if (photo) {
-        // Upload to supabase storage – replace bucket & public path as needed
+        // Upload to Supabase storage (bucket “efir-photos”)
         const { data, error: uploadErr } = await supabase.storage
           .from("efir-photos")
           .upload(`photos/${photo.name}`, photo);
         if (uploadErr) throw uploadErr;
-        photoUrl = data?.Path;
+        photoUrl = data?.Path ?? null;
       }
 
       const { error: insertErr } = await supabase.from("efirs").insert({
@@ -44,14 +53,14 @@ const EFIRForm = () => {
         description: "The incident has been saved successfully.",
       });
 
-      // reset form
+      // Reset form
       setCaseNumber("");
       setDescription("");
       setPhoto(null);
     } catch (err: any) {
       toast({
         title: "❌ Error",
-        description: err.message,
+        description: err.message ?? "Something went wrong.",
         variant: "destructive",
       });
     } finally {
@@ -69,31 +78,48 @@ const EFIRForm = () => {
       </CardHeader>
 
       <form onSubmit={handleSubmit} className="space-y-4 p-4">
-        <Input
-          label="Case Number"
-          value={caseNumber}
-          onChange={(e) => setCaseNumber(e.target.value)}
-          required
-        />
+        {/* Case Number – UI library uses a wrapper <label> so we just pass the id */}
+        <div>
+          <label htmlFor="caseNumber" className="block text-sm font-medium mb-1">
+            Case Number
+          </label>
+          <Input
+            id="caseNumber"
+            value={caseNumber}
+            onChange={(e) => setCaseNumber(e.target.value)}
+            required
+            placeholder="e.g. CF-2025-001"
+          />
+        </div>
 
-        <Textarea
-          label="Description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          required
-        />
+        {/* Incident description */}
+        <div>
+          <label htmlFor="description" className="block text-sm font-medium mb-1">
+            Description
+          </label>
+          <Textarea
+            id="description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            required
+            placeholder="Describe the incident..."
+            rows={4}
+          />
+        </div>
 
-        <label className="flex items-center gap-2 text-sm cursor-pointer">
-          <FileUploadIcon className="w-4 h-4" />
+        {/* Optional photo upload */}
+        <div className="flex items-center gap-2 text-sm cursor-pointer">
+          <Upload className="w-4 h-4" />
           <input
             type="file"
             accept="image/*"
-            onChange={(e) => setPhoto(e.target.files?.[0] || null)}
+            onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
             className="hidden"
           />
           {photo ? photo.name : "Attach a photo (optional)"}
-        </label>
+        </div>
 
+        {/* Submit button */}
         <Button type="submit" disabled={submitting} className="w-full">
           {submitting ? "Submitting…" : "Submit e‑FIR"}
         </Button>
