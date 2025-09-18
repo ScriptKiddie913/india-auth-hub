@@ -1,7 +1,7 @@
 /* src/pages/PoliceDashboard.tsx */
 import { useNavigate } from "react-router-dom";
-import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Shield, LogOut, AlertTriangle } from "lucide-react";
@@ -16,7 +16,7 @@ const PoliceDashboard: React.FC = () => {
 
   /* ---------- Logout ---------- */
   const handleLogout = async () => {
-    await supabase.auth.signOut();          // real sign‑out
+    await supabase.auth.signOut();
     toast({ title: "Signed out", description: "You have been logged out." });
     navigate("/police-signin");
   };
@@ -38,25 +38,25 @@ const PoliceDashboard: React.FC = () => {
           </div>
         </CardHeader>
 
-        {/* Main content – three‑column layout */}
+        {/* Main content – 3‑column layout */}
         <CardContent className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Column 1 – Map */}
+          {/* Map */}
           <div className="lg:col-span-1">
             <PoliceMap />
           </div>
 
-          {/* Column 2 – e‑FIR form */}
+          {/* e‑FIR form */}
           <div className="lg:col-span-1">
             <EFIRForm />
           </div>
 
-          {/* Column 3 – panic alerts */}
+          {/* Panic alerts */}
           <div className="lg:col-span-1">
             <PanicAlerts />
           </div>
         </CardContent>
 
-        {/* Bottom actions */}
+        {/* Footer – logout */}
         <CardHeader className="border-t py-3 text-right">
           <Button variant="outline" onClick={handleLogout}>
             <LogOut className="mr-2 h-4 w-4" /> Sign out
