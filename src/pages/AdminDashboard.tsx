@@ -58,9 +58,9 @@ const AdminDashboard = () => {
   const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "users" | "helpdesk">(
-    "dashboard",
-  );
+  const [activeTab, setActiveTab] = useState<
+    "dashboard" | "users" | "helpdesk"
+  >("dashboard");
 
   const [panicAlerts, setPanicAlerts] = useState<PanicAlert[]>([]);
   const [allUsers, setAllUsers] = useState<any[]>([]);
@@ -83,9 +83,7 @@ const AdminDashboard = () => {
 
       if (error) throw error;
 
-      const userIds = [
-        ...new Set((data ?? []).map((a: any) => a.user_id)),
-      ];
+      const userIds = [...new Set((data ?? []).map((a: any) => a.user_id))];
       const { data: profiles } = await supabase
         .from("profiles")
         .select("user_id, full_name")
@@ -107,6 +105,10 @@ const AdminDashboard = () => {
 
       if (error) throw error;
       setAllUsers(data ?? []);
+
+      /* Count active users from the fetched results */
+      const activeCount = (data ?? []).filter((u) => u.is_active).length;
+      setActiveUsersCount(activeCount);
     };
 
     /* Realtime – new panic alerts */
@@ -147,11 +149,6 @@ const AdminDashboard = () => {
 
     /* Initial data & count */
     const init = async () => {
-      const { count } = await supabase
-        .from("profiles")
-        .select("*", { count: "exact" })
-        .eq("is_active", true);
-      setActiveUsersCount(count ?? 0);
       await fetchPanicAlerts();
       await fetchAllUsers();
     };
@@ -172,7 +169,11 @@ const AdminDashboard = () => {
       .eq("id", alertId);
 
     if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
       return;
     }
 
@@ -283,7 +284,9 @@ const AdminDashboard = () => {
               </CardHeader>
               <CardContent>
                 {panicAlerts.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-8">No panic alerts</p>
+                  <p className="text-muted-foreground text-center py-8">
+                    No panic alerts
+                  </p>
                 ) : (
                   <div className="space-y-4">
                     {panicAlerts.map((alert) => (
@@ -298,10 +301,18 @@ const AdminDashboard = () => {
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-2">
-                              <Badge variant={alert.status === "active" ? "destructive" : "secondary"}>
+                              <Badge
+                                variant={
+                                  alert.status === "active"
+                                    ? "destructive"
+                                    : "secondary"
+                                }
+                              >
                                 {alert.status}
                               </Badge>
-                              <strong>{alert.profiles?.full_name ?? "Unknown User"}</strong>
+                              <strong>
+                                {alert.profiles?.full_name ?? "Unknown User"}
+                              </strong>
                               <span className="text-sm text-muted-foreground">
                                 {new Date(alert.created_at).toLocaleString()}
                               </span>
@@ -363,7 +374,9 @@ const AdminDashboard = () => {
               </CardHeader>
               <CardContent>
                 {allUsers.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-8">No users found</p>
+                  <p className="text-muted-foreground text-center py-8">
+                    No users found
+                  </p>
                 ) : (
                   <div className="grid gap-4">
                     {allUsers.map((user) => (
