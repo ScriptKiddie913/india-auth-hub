@@ -1,4 +1,3 @@
-import Translator from "@/components/Translator";
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -11,16 +10,7 @@ import {
 } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import {
-  User,
-  LogOut,
-  MapPin,
-  Trash2,
-  Navigation,
-  AlertTriangle,
-  HelpCircle,
-  Phone,
-} from "lucide-react";
+import { User, LogOut, MapPin, Trash2, Navigation, AlertTriangle, HelpCircle, Phone } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import HelpDesk from "@/components/HelpDesk";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
@@ -32,11 +22,9 @@ interface Destination {
   longitude?: number;
 }
 
-/* ---------------------------------------------------------- */
-/*  Haversine – distance in metres                         */
-/* ---------------------------------------------------------- */
+// ✅ Haversine formula to calculate distance (in meters)
 const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-  const R = 6371e3; // m
+  const R = 6371e3; // Earth radius in meters
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const φ1 = toRad(lat1);
   const φ2 = toRad(lat2);
@@ -48,20 +36,19 @@ const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => 
     Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
 
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c; // metres
+  return R * c; // in meters
 };
 
 const Dashboard = () => {
-  /* ---------------------------------------------------------- */
-  /*  State                                                   */
-  /* ---------------------------------------------------------- */
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [destinations, setDestinations] = useState<Destination[]>([]);
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(
+    null
+  );
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<any[]>([]);
-  const [isSafe, setIsSafe] = useState(true); // safe / unsafe
+  const [isSafe, setIsSafe] = useState(true); // ✅ Safe / Unsafe status
   const [activeTab, setActiveTab] = useState("dashboard");
 
   const mapRef = useRef<HTMLDivElement>(null);
@@ -69,24 +56,18 @@ const Dashboard = () => {
   const markerRef = useRef<any>(null);
   const isFirstLoad = useRef(true);
 
-  /* ---------------------------------------------------------- */
-  /*  Geofence state & constants                             */
-  /* ---------------------------------------------------------- */
+  // ✅ Geofence state
   const geofenceStatus = useRef<Record<string, boolean>>({});
   const geofenceCircles = useRef<Record<string, any>>({});
-  const GEOFENCE_RADIUS = 3000; // metres
+  const GEOFENCE_RADIUS =3000; // meters
 
-  /* ---------------------------------------------------------- */
-  /*  Audio – beep on geofence exit                         */
-  /* ---------------------------------------------------------- */
+  // ✅ Beep sound
   const beepRef = useRef<HTMLAudioElement | null>(null);
 
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  /* ---------------------------------------------------------- */
-  /*  Unlock audio after first click                          */
-  /* ---------------------------------------------------------- */
+  // ✅ Unlock audio after first user click
   useEffect(() => {
     const unlockAudio = () => {
       if (beepRef.current) {
@@ -100,29 +81,28 @@ const Dashboard = () => {
     window.addEventListener("click", unlockAudio);
   }, []);
 
-  /* ---------------------------------------------------------- */
-  /*  Authentication + profile check                          */
-  /* ---------------------------------------------------------- */
+  // ✅ Authentication and profile check
   useEffect(() => {
     const getUser = async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-
       if (user) {
         setUser(user);
-
+        
+        // Check if user has completed profile
         const { data: profile } = await supabase
-          .from("profiles")
-          .select("nationality, phone")
-          .eq("user_id", user.id)
+          .from('profiles')
+          .select('nationality, phone')
+          .eq('user_id', user.id)
           .maybeSingle();
-
+        
+        // If user doesn't have nationality or phone, redirect to profile completion
         if (!profile || !profile.nationality || !profile.phone) {
-          navigate("/profile-completion");
+          navigate('/profile-completion');
           return;
         }
-
+        
         await fetchDestinations(user.id);
       } else {
         navigate("/signin");
@@ -140,9 +120,7 @@ const Dashboard = () => {
     return () => data.subscription.unsubscribe();
   }, [navigate]);
 
-  /* ---------------------------------------------------------- */
-  /*  Geolocation / Google Maps / Geofencing                  */
-  /* ---------------------------------------------------------- */
+  // ✅ Real-time location tracking + Google Map + Geofencing
   useEffect(() => {
     if ("geolocation" in navigator) {
       const watchId = navigator.geolocation.watchPosition(
@@ -151,7 +129,7 @@ const Dashboard = () => {
           const lng = pos.coords.longitude;
           setLocation({ lat, lng });
 
-          /*  Initialise map once */
+          // Initialize map once
           if (mapRef.current && !mapInstance.current && (window as any).google) {
             mapInstance.current = new (window as any).google.maps.Map(mapRef.current, {
               center: { lat, lng },
@@ -164,18 +142,18 @@ const Dashboard = () => {
             });
           }
 
-          /*  Update marker position */
+          // Update marker
           if (markerRef.current) {
             markerRef.current.setPosition({ lat, lng });
           }
 
-          /*  Auto‑pan on first load */
+          // Only auto-pan on first load
           if (mapInstance.current && isFirstLoad.current) {
             mapInstance.current.panTo({ lat, lng });
             isFirstLoad.current = false;
           }
 
-          /*  Draw / update geofence circles */
+          // ✅ Draw geofence circles
           if (mapInstance.current) {
             destinations.forEach((dest) => {
               if (dest.latitude && dest.longitude) {
@@ -195,7 +173,7 @@ const Dashboard = () => {
               }
             });
 
-            /*  Remove circles for deleted destinations */
+            // Remove circles for deleted destinations
             Object.keys(geofenceCircles.current).forEach((id) => {
               if (!destinations.find((d) => d.id === id)) {
                 geofenceCircles.current[id].setMap(null);
@@ -204,7 +182,7 @@ const Dashboard = () => {
             });
           }
 
-          /*  Geofence enter / exit logic */
+          // ✅ Check geofences
           if (user && destinations.length > 0) {
             let insideAnyGeofence = false;
 
@@ -219,7 +197,9 @@ const Dashboard = () => {
                 const isInside = distance <= GEOFENCE_RADIUS;
                 const wasInside = geofenceStatus.current[dest.id] || false;
 
-                if (isInside) insideAnyGeofence = true;
+                if (isInside) {
+                  insideAnyGeofence = true;
+                }
 
                 if (isInside && !wasInside) {
                   toast({
@@ -236,11 +216,12 @@ const Dashboard = () => {
                     variant: "destructive",
                   });
 
+                  // ✅ Play beep sound on exit
                   if (beepRef.current) {
                     beepRef.current.currentTime = 0;
-                    beepRef.current
-                      .play()
-                      .catch(() => console.warn("Autoplay prevented."));
+                    beepRef.current.play().catch(() => {
+                      console.warn("Autoplay prevented. User interaction required.");
+                    });
                   }
 
                   geofenceStatus.current[dest.id] = false;
@@ -248,10 +229,11 @@ const Dashboard = () => {
               }
             });
 
+            // ✅ Update Safe/Unsafe
             setIsSafe(insideAnyGeofence);
           }
 
-          /*  Persist location to DB */
+          // ✅ Update user location in database (replace old location)
           if (user) {
             updateUserLocation(user.id, lat, lng);
           }
@@ -270,39 +252,47 @@ const Dashboard = () => {
     }
   }, [toast, destinations, user]);
 
-  /* ---------------------------------------------------------- */
-  /*  Persist user location  (delete old, insert new)          */
-  /* ---------------------------------------------------------- */
+  // ✅ Update user location (replace old location) - called every 15 seconds
   const updateUserLocation = async (userId: string, latitude: number, longitude: number) => {
     try {
-      await supabase.from("user_locations").delete().eq("user_id", userId);
+      // First, delete any existing location for this user
+      await supabase
+        .from("user_locations")
+        .delete()
+        .eq("user_id", userId);
+      
+      // Then insert the new location
       const { error } = await supabase
         .from("user_locations")
-        .insert({ user_id: userId, latitude, longitude });
+        .insert({
+          user_id: userId,
+          latitude,
+          longitude,
+        });
+      
       if (error) throw error;
     } catch (error: any) {
       console.error("Error updating location:", error);
     }
   };
 
-  /* ---------------------------------------------------------- */
-  /*  Periodic location update every 15 s                       */
-  /* ---------------------------------------------------------- */
+  // ✅ Location tracking with 15-second interval
   useEffect(() => {
     if (!user || !location) return;
+
     const locationInterval = setInterval(() => {
       if (location && user) {
         updateUserLocation(user.id, location.lat, location.lng);
       }
-    }, 15000);
+    }, 15000); // Update every 15 seconds
+
     return () => clearInterval(locationInterval);
   }, [user, location]);
 
-  /* ---------------------------------------------------------- */
-  /*  Panic button handler                                     */
-  /* ---------------------------------------------------------- */
+  // ✅ Panic Button Handler
   const handlePanicButton = async () => {
     if (!user || !location) return;
+    
     try {
       const { error } = await supabase
         .from("panic_alerts")
@@ -313,9 +303,9 @@ const Dashboard = () => {
           longitude: location.lng,
           status: "active",
         });
-
+      
       if (error) throw error;
-
+      
       toast({
         title: "🚨 Panic Alert Sent!",
         description: "Emergency services have been notified of your location.",
@@ -330,9 +320,7 @@ const Dashboard = () => {
     }
   };
 
-  /* ---------------------------------------------------------- */
-  /*  Fetch destinations                                       */
-  /* ---------------------------------------------------------- */
+  // ✅ Fetch destinations from Supabase
   const fetchDestinations = async (userId: string) => {
     try {
       const { data, error } = await supabase
@@ -351,9 +339,7 @@ const Dashboard = () => {
     }
   };
 
-  /* ---------------------------------------------------------- */
-  /*  Sign‑out                                                 */
-  /* ---------------------------------------------------------- */
+  // ✅ Sign Out
   const handleSignOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
@@ -371,9 +357,7 @@ const Dashboard = () => {
     }
   };
 
-  /* ---------------------------------------------------------- */
-  /*  Debounce                                               */
-  /* ---------------------------------------------------------- */
+  // ✅ Debounce function
   const debounce = (func: Function, delay: number) => {
     let timer: NodeJS.Timeout;
     return (...args: any[]) => {
@@ -384,9 +368,7 @@ const Dashboard = () => {
     };
   };
 
-  /* ---------------------------------------------------------- */
-  /*  Fetch suggestions (Photon)                              */
-  /* ---------------------------------------------------------- */
+  // ✅ Fetch location suggestions from Photon API (fast + stable)
   const fetchSuggestions = async (value: string) => {
     setQuery(value);
     if (value.length < 3) {
@@ -395,9 +377,7 @@ const Dashboard = () => {
     }
     try {
       const res = await fetch(
-        `https://photon.komoot.io/api/?q=${encodeURIComponent(
-          value
-        )}&limit=10`
+        `https://photon.komoot.io/api/?q=${encodeURIComponent(value)}&limit=10`
       );
       const data = await res.json();
       if (data && data.features) {
@@ -412,20 +392,14 @@ const Dashboard = () => {
     debounce(fetchSuggestions, 400)
   ).current;
 
-  /* ---------------------------------------------------------- */
-  /*  Add destination                                        */
-  /* ---------------------------------------------------------- */
+  // ✅ Add destination
   const addDestination = async (place: any) => {
     if (!user) return;
     try {
       const coords = place.geometry.coordinates;
       const { error } = await supabase.from("destinations").insert({
         user_id: user.id,
-        name:
-          place.properties.name ||
-          place.properties.city ||
-          place.properties.country ||
-          "Unnamed Place",
+        name: place.properties.name || place.properties.city || place.properties.country || "Unnamed Place",
         latitude: parseFloat(coords[1]),
         longitude: parseFloat(coords[0]),
       });
@@ -446,9 +420,7 @@ const Dashboard = () => {
     }
   };
 
-  /* ---------------------------------------------------------- */
-  /*  Remove destination                                     */
-  /* ---------------------------------------------------------- */
+  // ✅ Remove destination
   const removeDestination = async (destinationId: string) => {
     try {
       const { error } = await supabase
@@ -456,7 +428,9 @@ const Dashboard = () => {
         .delete()
         .eq("id", destinationId);
       if (error) throw error;
-      setDestinations((prev) => prev.filter((dest) => dest.id !== destinationId));
+      setDestinations((prev) =>
+        prev.filter((dest) => dest.id !== destinationId)
+      );
       toast({
         title: "Destination removed",
         description: "Removed from your travel list!",
@@ -470,9 +444,6 @@ const Dashboard = () => {
     }
   };
 
-  /* ---------------------------------------------------------- */
-  /*  Loading state                                          */
-  /* ---------------------------------------------------------- */
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary/20 to-accent/10">
@@ -483,15 +454,14 @@ const Dashboard = () => {
 
   if (!user) return null;
 
-  /* ---------------------------------------------------------- */
-  /*  Render                                               */
-  /* ---------------------------------------------------------- */
   return (
     <div
       className="min-h-screen bg-cover bg-center bg-no-repeat"
-      style={{ backgroundImage: "url('/mountainbg.jpg')" }}
+      style={{
+        backgroundImage: "url('/mountainbg.jpg')",
+      }}
     >
-      {/* Hidden audio element */}
+      {/* Hidden audio player for beep */}
       <audio ref={beepRef} src="/beep.mp3" preload="auto" />
 
       {/* Gradient overlay */}
@@ -513,7 +483,11 @@ const Dashboard = () => {
                   </p>
                 </div>
               </div>
-              <Button variant="outline" onClick={() => navigate("/profile")}>
+              <Button
+                variant="outline"
+                className="flex items-center space-x-2"
+                onClick={() => navigate('/profile')}
+              >
                 <User className="w-4 h-4" />
                 <span>Profile</span>
               </Button>
@@ -531,18 +505,14 @@ const Dashboard = () => {
 
         {/* Main Content */}
         <main className="container mx-auto px-4 py-8">
-          <Tabs
-            value={activeTab}
-            onValueChange={setActiveTab}
-            className="space-y-6"
-          >
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
               <TabsTrigger value="helpdesk">Help & Support</TabsTrigger>
             </TabsList>
-
+            
             <TabsContent value="dashboard" className="space-y-6">
-              {/* ----------- Welcome Card ------------- */}
+              {/* Welcome */}
               <Card className="bg-gradient-to-r from-primary to-accent text-white border-0 shadow-xl">
                 <CardHeader className="pb-6">
                   <div className="flex items-center justify-between">
@@ -552,16 +522,17 @@ const Dashboard = () => {
                       </div>
                       <div>
                         <CardTitle className="text-3xl font-bold">
-                          Welcome,
+                          Welcome,{" "}
                           {user.user_metadata?.full_name ||
-                            user.email?.split("@")[0]}!
+                            user.email?.split("@")[0]}
+                          !
                         </CardTitle>
                         <CardDescription className="text-white/80 text-lg">
                           Ready to explore the wonders of India?
                         </CardDescription>
                       </div>
                     </div>
-
+                
                     <Button
                       onClick={handlePanicButton}
                       variant="destructive"
@@ -575,119 +546,103 @@ const Dashboard = () => {
                 </CardHeader>
               </Card>
 
-              {/* ----------- Translator Card ------------- */}
+            {/* ✅ Real-Time Location Map */}
+            {location && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-2xl font-bold">
-                    Translator
+                  <CardTitle className="text-2xl font-bold flex items-center gap-2">
+                    <Navigation className="h-5 w-5 text-primary" /> Your Live
+                    Location
                   </CardTitle>
                   <CardDescription>
-                    Translate messages instantly using free API
+                    Latitude: {location.lat.toFixed(6)}, Longitude:{" "}
+                    {location.lng.toFixed(6)}
                   </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Translator />
-                </CardContent>
-              </Card>
-
-              {/* ----------- Real‑time map ------------- */}
-              {location && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-2xl font-bold flex items-center gap-2">
-                      <Navigation className="h-5 w-5 text-primary" />
-                      Your Live Location
-                    </CardTitle>
-                    <CardDescription>
-                      Latitude: {location.lat.toFixed(6)}, Longitude:{" "}
-                      {location.lng.toFixed(6)}
-                    </CardDescription>
-
-                    <div className="mt-2">
-                      {isSafe ? (
-                        <span className="px-3 py-1 rounded-full bg-green-500 text-white font-semibold">
-                          ✅ Safe (Inside Geofence)
-                        </span>
-                      ) : (
-                        <span className="px-3 py-1 rounded-full bg-red-500 text-white font-semibold">
-                          ⚠️ Unsafe (Outside Geofence)
-                        </span>
-                      )}
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div ref={mapRef} className="w-full h-64 rounded-lg border" />
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* ----------- Destinations ------------- */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-2xl font-bold">
-                    Plan Your Destinations
-                  </CardTitle>
-                  <CardDescription>
-                    Search for locations using Photon API and add them to your
-                    travel list.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="relative mb-4">
-                    <input
-                      type="text"
-                      value={query}
-                      onChange={(e) => {
-                        setQuery(e.target.value);
-                        debouncedFetchSuggestions(e.target.value);
-                      }}
-                      placeholder="Search for a location..."
-                      className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                    />
-                    {suggestions.length > 0 && (
-                      <ul className="absolute z-10 bg-white border rounded-md shadow-md w-full mt-1 max-h-60 overflow-auto">
-                        {suggestions.map((place, index) => (
-                          <li
-                            key={index}
-                            className="px-4 py-2 hover:bg-secondary cursor-pointer flex items-center space-x-2"
-                            onClick={() => addDestination(place)}
-                          >
-                            <MapPin className="w-4 h-4 text-primary" />
-                            <span>
-                              {place.properties.name ||
-                                place.properties.city ||
-                                place.properties.country}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
+                  {/* ✅ Safe / Unsafe Indicator */}
+                  <div className="mt-2">
+                    {isSafe ? (
+                      <span className="px-3 py-1 rounded-full bg-green-500 text-white font-semibold">
+                        ✅ Safe (Inside Geofence)
+                      </span>
+                    ) : (
+                      <span className="px-3 py-1 rounded-full bg-red-500 text-white font-semibold">
+                        ⚠️ Unsafe (Outside Geofence)
+                      </span>
                     )}
                   </div>
+                </CardHeader>
+                <CardContent>
+                  <div ref={mapRef} className="w-full h-64 rounded-lg border" />
+                </CardContent>
+              </Card>
+            )}
 
-                  {destinations.length > 0 && (
-                    <ul className="space-y-2">
-                      {destinations.map((dest) => (
+            {/* ✅ Destinations Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-2xl font-bold">
+                  Plan Your Destinations
+                </CardTitle>
+                <CardDescription>
+                  Search for locations using Photon API and add them to your
+                  travel list.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="relative mb-4">
+                  <input
+                    type="text"
+                    value={query}
+                    onChange={(e) => {
+                      setQuery(e.target.value);
+                      debouncedFetchSuggestions(e.target.value)
+                    }}
+                    placeholder="Search for a location..."
+                    className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                  {suggestions.length > 0 && (
+                    <ul className="absolute z-10 bg-white border rounded-md shadow-md w-full mt-1 max-h-60 overflow-auto">
+                      {suggestions.map((place, index) => (
                         <li
-                          key={dest.id}
-                          className="flex justify-between items-center bg-secondary/20 px-4 py-2 rounded-md"
+                          key={index}
+                          className="px-4 py-2 hover:bg-secondary cursor-pointer flex items-center space-x-2"
+                          onClick={() => addDestination(place)}
                         >
-                          <span>{dest.name}</span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => removeDestination(dest.id)}
-                          >
-                            <Trash2 className="w-4 h-4 text-destructive" />
-                          </Button>
+                          <MapPin className="w-4 h-4 text-primary" />
+                          <span>
+                            {place.properties.name ||
+                              place.properties.city ||
+                              place.properties.country}
+                          </span>
                         </li>
                       ))}
                     </ul>
                   )}
-                </CardContent>
-              </Card>
-            </TabsContent>
+                </div>
 
-            {/* ----------- Help Desk ------------- */}
+                {destinations.length > 0 && (
+                  <ul className="space-y-2">
+                    {destinations.map((dest) => (
+                      <li
+                        key={dest.id}
+                        className="flex justify-between items-center bg-secondary/20 px-4 py-2 rounded-md"
+                      >
+                        <span>{dest.name}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeDestination(dest.id)}
+                        >
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+            </TabsContent>
+            
             <TabsContent value="helpdesk">
               <Card>
                 <CardHeader>
@@ -712,3 +667,7 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+          
+
+
+
