@@ -125,42 +125,67 @@ const ProfileCompletion = () => {
     }
 
     setLoading(true);
+    console.log('Starting document upload process...');
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not found');
 
+      console.log('User found:', user.id);
+      console.log('Selected file:', selectedFile.name, selectedFile.size, selectedFile.type);
+
       // Upload document to Supabase Storage
       const fileExt = selectedFile.name.split('.').pop();
       const fileName = `${user.id}-${Date.now()}.${fileExt}`;
       
+      console.log('Uploading file as:', fileName);
+
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('helpdesk-files')
-        .upload(`documents/${fileName}`, selectedFile);
+        .upload(`user-documents/${fileName}`, selectedFile, {
+          cacheControl: '3600',
+          upsert: false
+        });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        throw uploadError;
+      }
+
+      console.log('Upload successful:', uploadData);
 
       // Get public URL for the uploaded document
       const { data: { publicUrl } } = supabase.storage
         .from('helpdesk-files')
-        .getPublicUrl(`documents/${fileName}`);
+        .getPublicUrl(`user-documents/${fileName}`);
+
+      console.log('Public URL:', publicUrl);
 
       // Update user profile
+      const profileData = {
+        user_id: user.id,
+        full_name: formData.name,
+        phone: formData.phone,
+        nationality: formData.nationality,
+        passport_number: formData.passport || null,
+        aadhaar_number: formData.aadhaar || null,
+        document_url: publicUrl
+      };
+
+      console.log('Updating profile with:', profileData);
+
       const { error: profileError } = await supabase
         .from('profiles')
-        .upsert({
-          user_id: user.id,
-          full_name: formData.name,
-          phone: formData.phone,
-          nationality: formData.nationality,
-          passport_number: formData.passport || null,
-          aadhaar_number: formData.aadhaar || null,
-          document_url: publicUrl
-        }, {
+        .upsert(profileData, {
           onConflict: 'user_id'
         });
 
-      if (profileError) throw profileError;
+      if (profileError) {
+        console.error('Profile update error:', profileError);
+        throw profileError;
+      }
+
+      console.log('Profile updated successfully');
 
       toast({
         title: "Profile completed!",

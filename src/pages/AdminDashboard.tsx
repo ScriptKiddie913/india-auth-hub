@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Shield, LogOut, AlertTriangle, MapPin, Users, Clock, HelpCircle, Phone, CheckCircle } from "lucide-react";
+import { Shield, LogOut, AlertTriangle, MapPin, Users, Clock, HelpCircle, Phone, CheckCircle, User, FileText } from "lucide-react";
 import AdminMap from "@/components/AdminMap";
 import AdminHelpDesk from "@/components/AdminHelpDesk";
 import { format } from "date-fns";
@@ -38,6 +38,7 @@ interface PanicAlert {
 const AdminDashboard = () => {
   const [userLocations, setUserLocations] = useState<UserLocation[]>([]);
   const [panicAlerts, setPanicAlerts] = useState<PanicAlert[]>([]);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("dashboard");
   const navigate = useNavigate();
@@ -53,6 +54,7 @@ const AdminDashboard = () => {
 
     fetchUserLocations();
     fetchPanicAlerts();
+    fetchAllUsers();
     
     // Set up real-time subscriptions
     const panicChannel = supabase
@@ -163,6 +165,24 @@ const AdminDashboard = () => {
     }
   };
 
+  const fetchAllUsers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select('*')
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setAllUsers(data || []);
+    } catch (error: any) {
+      toast({
+        title: "Error fetching users",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleResolveAlert = async (alertId: string) => {
     try {
       const { error } = await supabase
@@ -238,8 +258,9 @@ const AdminDashboard = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+            <TabsTrigger value="users">User Management</TabsTrigger>
             <TabsTrigger value="helpdesk">Help Desk</TabsTrigger>
           </TabsList>
           
@@ -382,6 +403,97 @@ const AdminDashboard = () => {
               )}
             </CardContent>
           </Card>
+          </TabsContent>
+          
+          <TabsContent value="users" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-2xl font-bold flex items-center gap-2">
+                  <Users className="h-6 w-6 text-primary" />
+                  User Management
+                </CardTitle>
+                <CardDescription>
+                  View and manage all registered users and their profiles
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {allUsers.length === 0 ? (
+                    <p className="text-muted-foreground text-center py-8">No users found</p>
+                  ) : (
+                    <div className="grid gap-4">
+                      {allUsers.map((user) => (
+                        <Card key={user.id} className="hover:shadow-md transition-shadow">
+                          <CardContent className="p-6">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-4 mb-4">
+                                  <div className="w-12 h-12 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center">
+                                    <User className="w-6 h-6 text-white" />
+                                  </div>
+                                  <div>
+                                    <h3 className="text-lg font-semibold">{user.full_name || 'No name provided'}</h3>
+                                    <p className="text-sm text-muted-foreground">
+                                      Member since {new Date(user.created_at).toLocaleDateString()}
+                                    </p>
+                                  </div>
+                                </div>
+                                
+                                <div className="grid md:grid-cols-2 gap-4">
+                                  <div className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                      <Phone className="w-4 h-4 text-muted-foreground" />
+                                      <span className="text-sm">{user.phone || 'No phone provided'}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <MapPin className="w-4 h-4 text-muted-foreground" />
+                                      <span className="text-sm">{user.nationality || 'No nationality provided'}</span>
+                                    </div>
+                                  </div>
+                                  
+                                  <div className="space-y-2">
+                                    {user.passport_number && (
+                                      <div className="flex items-center gap-2">
+                                        <FileText className="w-4 h-4 text-muted-foreground" />
+                                        <span className="text-sm">Passport: {user.passport_number}</span>
+                                      </div>
+                                    )}
+                                    {user.aadhaar_number && (
+                                      <div className="flex items-center gap-2">
+                                        <FileText className="w-4 h-4 text-muted-foreground" />
+                                        <span className="text-sm">Aadhaar: {user.aadhaar_number}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              <div className="flex flex-col gap-2 ml-4">
+                                {user.document_url && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => window.open(user.document_url, '_blank')}
+                                  >
+                                    <FileText className="w-4 h-4 mr-2" />
+                                    View Document
+                                  </Button>
+                                )}
+                                <Badge 
+                                  variant={user.nationality ? 'default' : 'secondary'}
+                                >
+                                  {user.nationality ? 'Verified' : 'Incomplete'}
+                                </Badge>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
           
           <TabsContent value="helpdesk">
