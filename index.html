@@ -29,19 +29,87 @@
       async
       defer
     ></script>
+
+    <style>
+      /* ✅ Hide Google Translate junk completely */
+      .goog-te-banner-frame.skiptranslate,
+      .goog-te-banner-frame,
+      .goog-te-balloon-frame,
+      .goog-te-gadget,
+      .goog-te-combo,
+      .goog-te-banner,
+      .goog-logo-link {
+        display: none !important;
+      }
+
+      body {
+        top: 0px !important;
+      }
+
+      /* ✅ Hide tooltip */
+      .goog-tooltip,
+      .goog-tooltip:hover {
+        display: none !important;
+      }
+    </style>
   </head>
 
   <body>
     <div id="root"></div>
+
+    <!-- ✅ Load React app -->
     <script type="module" src="/src/main.tsx"></script>
 
+    <!-- ✅ Force remove Google Translate banner -->
     <script>
-      // Restore the path after redirect
-      if (sessionStorage.redirect) {
-        const redirectPath = sessionStorage.redirect;
-        delete sessionStorage.redirect;
-        history.replaceState(null, null, redirectPath);
+      function removeGTranslateBanner() {
+        const banner = document.querySelector("iframe.goog-te-banner-frame");
+        if (banner) banner.remove();
+
+        document.body.style.top = "0px";
+
+        const parent = document.querySelector(".goog-te-banner-frame");
+        if (parent && parent.parentNode) {
+          parent.parentNode.removeChild(parent);
+        }
       }
+
+      window.addEventListener("load", () => {
+        removeGTranslateBanner();
+
+        const obs = new MutationObserver(removeGTranslateBanner);
+        obs.observe(document.documentElement, { childList: true, subtree: true });
+      });
     </script>
+
+    <script>
+  function killTranslateBanner() {
+    // Remove iframe banner
+    const bannerFrame = document.querySelector("iframe.goog-te-banner-frame");
+    if (bannerFrame) bannerFrame.remove();
+
+    // Remove parent container
+    const bannerContainer = document.querySelector(".goog-te-banner-frame");
+    if (bannerContainer && bannerContainer.parentNode) {
+      bannerContainer.parentNode.removeChild(bannerContainer);
+    }
+
+    // Reset body offset
+    document.body.style.top = "0px";
+  }
+
+  // Run once when page loads
+  window.addEventListener("load", () => {
+    killTranslateBanner();
+
+    // ✅ Keep watching for re-injection
+    const obs = new MutationObserver(() => {
+      killTranslateBanner();
+    });
+    obs.observe(document.documentElement, { childList: true, subtree: true });
+  });
+</script>
+
   </body>
 </html>
+
