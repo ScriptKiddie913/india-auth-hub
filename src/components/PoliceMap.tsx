@@ -1,75 +1,66 @@
-/*  src/components/PoliceMap.tsx  */
-import { useEffect, useRef } from "react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+/**
+ * src/components/PoliceMap.tsx
+ *
+ * Lightweight map implementation that renders an embedded OpenStreetMap
+ * inside an iframe.  No external mapping libraries or API keys are used.
+ *
+ * The map can be centred on any lat/lng – change the constants below or
+ * replace `defaultCenter` with dynamic geolocation data.
+ */
+import { useEffect, useState } from "react";
 
-interface Incident {
-  id: string;
-  latitude: number;
-  longitude: number;
-  title: string;
-}
+const DEFAULT_LAT = 40.748817;   // Example: New York, Empire State
+const DEFAULT_LNG = -73.985428;
 
-const PoliceMap = () => {
-  const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstance = useRef<L.Map>();
+const POLICE_MAP_IFRAME_SRC = (lat: number, lng: number) => {
+  // Build a small bbox around the point so the map has some context
+  const delta = 0.02;
+  const minLat = lat - delta;
+  const maxLat = lat + delta;
+  const minLng = lng - delta;
+  const maxLng = lng + delta;
+  const marker = `${lat},${lng}`;
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${minLng},${minLat},${maxLng},${maxLat}&layer=mapnik&marker=${marker}`;
+};
 
-  // Dummy incident data – replace with a real API or Supabase query as needed
-  const incidents: Incident[] = [
-    {
-      id: "1",
-      latitude: 40.748817,
-      longitude: -73.985428,
-      title: "Suspicious Activity",
-    },
-    {
-      id: "2",
-      latitude: 40.752946,
-      longitude: -73.977564,
-      title: "Traffic Stop",
-    },
-  ];
+const PoliceMap: React.FC = () => {
+  const [coords, setCoords] = useState({ lat: DEFAULT_LAT, lng: DEFAULT_LNG });
 
+  /* (Optional) Fetch the officer’s current location */
   useEffect(() => {
-    // initialise map only once
-    if (!mapInstance.current && mapRef.current) {
-      const map = L.map(mapRef.current).setView([40.748817, -73.985428], 13);
-      mapInstance.current = map;
+    if (!navigator.geolocation) return; // geolocation not available
 
-      L.tileLayer(
-        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-        {
-          attribution:
-            '&copy; <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',
-        }
-      ).addTo(map);
+    const watch = navigator.geolocation.watchPosition(
+      (pos) => {
+        setCoords({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        });
+      },
+      () => {
+        /* ignore errors – fall back to default */
+      },
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
 
-      // officer marker – use browser geolocation if you want live position
-      const officerIcon = L.icon({
-        iconUrl: "/icons/officer.svg", // optional custom icon
-        iconSize: [32, 32],
-      });
-      L.marker([40.748817, -73.985428], { icon: officerIcon })
-        .addTo(map)
-        .bindPopup("You are here");
+    return () => watch && navigator.geolocation.clearWatch(watch);
+  }, []);
 
-      // incident markers
-      incidents.forEach((inc) => {
-        L.marker([inc.latitude, inc.longitude])
-          .addTo(map)
-          .bindPopup(inc.title);
-      });
-    }
-  }, [incidents]);
+  const iframeSrc = POLICE_MAP_IFRAME_SRC(coords.lat, coords.lng);
 
   return (
     <div>
       <h2 className="text-xl font-semibold mb-2">Field Map</h2>
-      <div
-        ref={mapRef}
-        style={{ height: "300px" }}
-        className="rounded shadow"
-      />
+      <div className="rounded overflow-hidden shadow">
+        <iframe
+          src={iframeSrc}
+          width="100%"
+          height="300"
+          frameBorder={0}
+          allowFullScreen
+          aria-label="OpenStreetMap"
+        />
+      </div>
     </div>
   );
 };
