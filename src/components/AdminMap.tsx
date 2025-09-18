@@ -1,52 +1,133 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { MapPin, Users } from "lucide-react";
+// src/pages/AdminMap.tsx
+import { useEffect, useRef, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 
-interface UserLocation {
+interface Tourist {
   id: string;
-  user_id: string;
+  name: string;
+  email: string;
   latitude: number;
   longitude: number;
-  created_at: string;
-  profiles?: {
-    full_name: string;
+}
+
+export default function AdminMap() {
+  const [tourists, setTourists] = useState<Tourist[]>([]);
+  const [loading, setLoading] = useState(true);
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstance = useRef<google.maps.Map | null>(null);
+  const markersRef = useRef<google.maps.Marker[]>([]);
+
+  // ✅ Load Google Maps script dynamically
+  useEffect(() => {
+    const existingScript = document.getElementById("google-maps");
+    if (!existingScript) {
+      const script = document.createElement("script");
+      script.id = "google-maps";
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${
+        import.meta.env.VITE_GOOGLE_MAPS_API_KEY
+      }&libraries=places`;
+      script.async = true;
+      script.defer = true;
+      script.onload = initMap;
+      document.body.appendChild(script);
+    } else {
+      initMap();
+    }
+  }, []);
+
+  // ✅ Initialize map
+  const initMap = () => {
+    if (mapRef.current && !mapInstance.current) {
+      mapInstance.current = new google.maps.Map(mapRef.current, {
+        center: { lat: 20.5937, lng: 78.9629 }, // Center on India
+        zoom: 5,
+      });
+    }
   };
-}
 
-interface AdminMapProps {
-  userLocations: UserLocation[];
-}
+  // ✅ Fetch tourists from Supabase
+  useEffect(() => {
+    const fetchTourists = async () => {
+      setLoading(true);
+      const { data, error } = await supabase.from("tourists").select("*");
+      if (error) {
+        console.error("Error fetching tourists:", error);
+      } else {
+        setTourists(data || []);
+      }
+      setLoading(false);
+    };
 
-const AdminMap = ({ userLocations }: AdminMapProps) => {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-2xl font-bold flex items-center gap-2">
-          <MapPin className="h-6 w-6 text-primary" />
-          Live User Locations Map
-        </CardTitle>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Users className="h-4 w-4" />
-          {userLocations.length} active users
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="w-full h-96 rounded-lg border bg-muted/10 flex items-center justify-center">
-          <div className="text-center space-y-4">
-            <MapPin className="h-16 w-16 text-muted-foreground mx-auto" />
-            <div>
-              <h3 className="text-lg font-semibold">Interactive Map Coming Soon</h3>
-              <p className="text-muted-foreground">Google Maps integration will be available in the next update</p>
-            </div>
-            {userLocations.length > 0 && (
-              <div className="text-sm text-muted-foreground">
-                Currently tracking {userLocations.length} user locations
+    fetchTourists();
+
+    // ✅ Realtime updates (optional)
+    const channel = supabase
+      .channel("realtime-tourists")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "tourists" },
+        (payload) => {
+          console.log("Realtime update:", payload);
+          fetchTourists();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // ✅ Add markers on the map when tourists change
+  useEffect(() => {
+    if (mapInstance.current) {
+      // Clear old markers
+      markersRef.current.forEach((m) => m.setMap(null));
+      markersRef.current = [];
+
+      tourists.forEach((tourist) => {
+        if (tourist.latitude && tourist.longitude) {
+          const marker = new google.maps.Marker({
+            position: { lat: tourist.latitude, lng: tourist.longitude },
+            map: mapInstance.current!,
+            title: tourist.name,
+          });
+
+          const infoWindow = new google.maps.InfoWindow({
+            content: `
+              <div>
+                <h3>${tourist.name}</h3>
+                <p>${tourist.email}</p>
+                <p>Lat: ${tourist.latitude}, Lng: ${tourist.longitude}</p>
               </div>
-            )}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-};
+            `,
+          });
 
-export default AdminMap;
+          marker.addListener("click", () => {
+            infoWindow.open(mapInstance.current, marker);
+          });
+
+          markersRef.current.push(marker);
+        }
+      });
+    }
+  }, [tourists]);
+
+  return (
+    <div className="p-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Admin Map - Tourist Tracking</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <p>Loading tourists...</p>
+          ) : (
+            <div ref={mapRef} className="w-full h-[600px] rounded-lg shadow-lg" />
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
