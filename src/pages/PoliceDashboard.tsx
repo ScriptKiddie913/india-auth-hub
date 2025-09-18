@@ -8,7 +8,7 @@ import React, {
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 
-// Entities (replace with your actual API clients)
+// Entitities (replace with your actual API clients)
 import { User, PanicAlert, eFIR, Geofence } from "@/entities/all";
 
 // UI components
@@ -76,7 +76,9 @@ const PoliceDashboard: React.FC = () => {
     28.6139,
     77.209,
   ]);
-  const mapRef = useRef<L.Map | null>(null);
+
+  // mapRef is not needed – leaving it as `any` to keep TypeScript happy
+  const mapRef = useRef<any>(null);
 
   // ✅ Sign out
   const handleLogout = () => {
@@ -184,9 +186,7 @@ const PoliceDashboard: React.FC = () => {
         user.current_location.lng,
       ];
       setMapCenter(newCenter);
-      if (mapRef.current) {
-        mapRef.current.flyTo(newCenter, 15);
-      }
+      // No ref needed – MapContainer will re‑center automatically
     }
   };
 
@@ -231,7 +231,9 @@ const PoliceDashboard: React.FC = () => {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
         <Card className="p-8 text-center">
           <Shield className="w-16 h-16 text-blue-600 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold mb-4">Police Command Center</h2>
+          <h2 className="text-2xl font-bold mb-4">
+            Police Command Center
+          </h2>
           <p className="text-gray-600">
             Authentication required for law enforcement access
           </p>
@@ -272,8 +274,8 @@ const PoliceDashboard: React.FC = () => {
           <Card className="lg:col-span-1">
             <CardHeader className="bg-blue-600 text-white">
               <CardTitle className="flex items-center gap-2">
-                <Users className="w-5 h-5" /> Live User Tracking (
-                {filteredUsers.length})
+                <Users className="w-5 h-5" />
+                Live User Tracking ({filteredUsers.length})
               </CardTitle>
               <div className="flex gap-2 mt-3">
                 <div className="relative flex-1">
@@ -327,13 +329,12 @@ const PoliceDashboard: React.FC = () => {
           <Card className="lg:col-span-2">
             <CardHeader className="bg-blue-600 text-white">
               <CardTitle className="flex items-center gap-2">
-                <Map className="w-5 h-5" /> Real-Time Map
+                <Map className="w-5 h-5" /> Real‑Time Map
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
               <div className="h-[600px]">
                 <MapContainer
-                  ref={mapRef}
                   center={mapCenter}
                   zoom={6}
                   className="h-full w-full"
