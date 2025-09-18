@@ -142,7 +142,7 @@ const ProfileCompletion = () => {
 
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('helpdesk-files')
-        .upload(`user-documents/${fileName}`, selectedFile, {
+        .upload(`user-documents/${user.id}/${fileName}`, selectedFile, {
           cacheControl: '3600',
           upsert: false
         });
@@ -157,7 +157,7 @@ const ProfileCompletion = () => {
       // Get public URL for the uploaded document
       const { data: { publicUrl } } = supabase.storage
         .from('helpdesk-files')
-        .getPublicUrl(`user-documents/${fileName}`);
+        .getPublicUrl(`user-documents/${user.id}/${fileName}`);
 
       console.log('Public URL:', publicUrl);
 
