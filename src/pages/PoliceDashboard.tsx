@@ -18,7 +18,6 @@ import {
   CardTitle,
   CardContent,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
@@ -61,25 +60,6 @@ L.Icon.Default.mergeOptions({
     "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
 });
 
-// ✅ Helper: calculate distance (km) between coordinates
-function getDistance(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number
-) {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
 const PoliceDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -96,7 +76,7 @@ const PoliceDashboard: React.FC = () => {
     28.6139,
     77.209,
   ]);
-  const mapRef = useRef<any>(null);
+  const mapRef = useRef<L.Map | null>(null);
 
   // ✅ Sign out
   const handleLogout = () => {
@@ -204,7 +184,9 @@ const PoliceDashboard: React.FC = () => {
         user.current_location.lng,
       ];
       setMapCenter(newCenter);
-      if (mapRef.current) mapRef.current.flyTo(newCenter, 15);
+      if (mapRef.current) {
+        mapRef.current.flyTo(newCenter, 15);
+      }
     }
   };
 
@@ -363,7 +345,10 @@ const PoliceDashboard: React.FC = () => {
                   {geofences.map((gf) => (
                     <Circle
                       key={gf.id}
-                      center={[gf.center_location.lat, gf.center_location.lng]}
+                      center={[
+                        gf.center_location.lat,
+                        gf.center_location.lng,
+                      ]}
                       radius={gf.radius * 1000}
                       pathOptions={{
                         color:
