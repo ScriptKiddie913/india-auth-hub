@@ -11,8 +11,6 @@
     <!-- Open Graph Meta -->
     <meta property="og:title" content="india-auth-hub" />
     <meta property="og:type" content="website" />
-
-    <!-- Twitter Meta -->
     <meta name="twitter:card" content="summary_large_image" />
 
     <!-- ✅ Redirect fix for Vercel refresh -->
@@ -23,20 +21,149 @@
       }
     </script>
 
-    <!-- ✅ Google Maps API with Places Library -->
+    <!-- ✅ Google Maps API -->
     <script
       src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBU7z2W7aE4T6TSV7SqEk0UJiyjAC97UW8&libraries=places"
       async
       defer
     ></script>
+
+    <!-- ✅ Custom Styles -->
+    <style>
+      /* Hide default Google Translate toolbar */
+      .goog-te-banner-frame.skiptranslate,
+      .goog-te-gadget-icon,
+      .goog-tooltip,
+      .goog-te-balloon-frame,
+      #goog-gt-tt,
+      #goog-gt-v,
+      #goog-gt-v * {
+        display: none !important;
+        visibility: hidden !important;
+      }
+
+      body {
+        top: 0px !important;
+      }
+
+      /* Language menu container */
+      #language-menu.notranslate {
+        position: fixed;
+        top: 55px;
+        right: 20px;
+        z-index: 9999;
+        font-family: "Inter", "Segoe UI", sans-serif;
+        user-select: none;
+      }
+
+      /* Toggle button */
+      #language-toggle {
+        background: linear-gradient(135deg, #0078d7, #005bb5);
+        color: #fff;
+        padding: 15px 18px;
+        border: none;
+        border-radius: 12px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+        transition: all 0.2s ease-in-out;
+      }
+
+      #language-toggle:hover {
+        background: linear-gradient(135deg, #005bb5, #004080);
+        transform: translateY(-2px);
+      }
+
+      /* Dropdown list */
+      #language-list {
+        display: none;
+        max-height: 350px;
+        overflow-y: auto;
+        margin-top: 10px;
+        background: #ffffff;
+        border-radius: 12px;
+        list-style: none;
+        padding: 6px 0;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+        animation: fadeIn 0.25s ease-in-out;
+      }
+
+      #language-list li {
+        padding: 10px 16px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        color: #333;
+        transition: all 0.2s ease;
+      }
+
+      #language-list li:hover {
+        background: #f0f6ff;
+        padding-left: 20px;
+        color: #0078d7;
+      }
+
+      /* Scrollbar styling */
+      #language-list::-webkit-scrollbar {
+        width: 8px;
+      }
+      #language-list::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 10px;
+      }
+      #language-list::-webkit-scrollbar-thumb {
+        background: #0078d7;
+        border-radius: 10px;
+      }
+      #language-list::-webkit-scrollbar-thumb:hover {
+        background: #005bb5;
+      }
+
+      /* Animation */
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(-5px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* Prevent Google from translating menu */
+      .notranslate * {
+        translate: no;
+      }
+
+      /* Hide Google widget */
+      #google_translate_element {
+        display: none;
+      }
+    </style>
   </head>
 
   <body>
+    <!-- Root app -->
     <div id="root"></div>
+
+    <!-- ✅ Custom Language Menu -->
+    <div id="language-menu" class="notranslate">
+      <button id="language-toggle">🌍 Language</button>
+      <ul id="language-list"></ul>
+    </div>
+
+    <!-- Hidden Google Translate element -->
+    <div id="google_translate_element"></div>
+
     <script type="module" src="/src/main.tsx"></script>
 
+    <!-- Restore redirect -->
     <script>
-      // Restore the path after redirect
       if (sessionStorage.redirect) {
         const redirectPath = sessionStorage.redirect;
         delete sessionStorage.redirect;
@@ -44,26 +171,151 @@
       }
     </script>
 
-    <!-- ✅ Google Translate -->
-    <div
-      id="google_translate_element"
-      class="fixed bottom-4 right-4 z-50"
-    ></div>
-
+    <!-- ✅ Google Translate Script -->
     <script type="text/javascript">
       function googleTranslateElementInit() {
         new google.translate.TranslateElement(
-          {
-            pageLanguage: "en", // Default site language
-            includedLanguages:
-              "en,hi,fr,de,es,zh-CN,ja,ru", // Add more languages if needed
-            layout: google.translate.TranslateElement.InlineLayout.HORIZONTAL,
-          },
+          { pageLanguage: "en" },
           "google_translate_element"
         );
       }
-    </script>
 
+      document.addEventListener("DOMContentLoaded", () => {
+        const toggle = document.getElementById("language-toggle");
+        const list = document.getElementById("language-list");
+
+        // ✅ World languages list
+        const languages = {
+          af: "Afrikaans",
+          sq: "Albanian",
+          am: "Amharic",
+          ar: "Arabic",
+          hy: "Armenian",
+          az: "Azerbaijani",
+          eu: "Basque",
+          be: "Belarusian",
+          bn: "Bengali",
+          bs: "Bosnian",
+          bg: "Bulgarian",
+          ca: "Catalan",
+          ceb: "Cebuano",
+          ny: "Chichewa",
+          "zh-CN": "Chinese (Simplified)",
+          "zh-TW": "Chinese (Traditional)",
+          co: "Corsican",
+          hr: "Croatian",
+          cs: "Czech",
+          da: "Danish",
+          nl: "Dutch",
+          en: "English",
+          eo: "Esperanto",
+          et: "Estonian",
+          tl: "Filipino",
+          fi: "Finnish",
+          fr: "French",
+          fy: "Frisian",
+          gl: "Galician",
+          ka: "Georgian",
+          de: "German",
+          el: "Greek",
+          gu: "Gujarati",
+          ht: "Haitian Creole",
+          ha: "Hausa",
+          haw: "Hawaiian",
+          iw: "Hebrew",
+          hi: "Hindi",
+          hmn: "Hmong",
+          hu: "Hungarian",
+          is: "Icelandic",
+          ig: "Igbo",
+          id: "Indonesian",
+          ga: "Irish",
+          it: "Italian",
+          ja: "Japanese",
+          jw: "Javanese",
+          kn: "Kannada",
+          kk: "Kazakh",
+          km: "Khmer",
+          ko: "Korean",
+          ku: "Kurdish (Kurmanji)",
+          ky: "Kyrgyz",
+          lo: "Lao",
+          la: "Latin",
+          lv: "Latvian",
+          lt: "Lithuanian",
+          lb: "Luxembourgish",
+          mk: "Macedonian",
+          mg: "Malagasy",
+          ms: "Malay",
+          ml: "Malayalam",
+          mt: "Maltese",
+          mi: "Maori",
+          mr: "Marathi",
+          mn: "Mongolian",
+          my: "Myanmar (Burmese)",
+          ne: "Nepali",
+          no: "Norwegian",
+          ps: "Pashto",
+          fa: "Persian",
+          pl: "Polish",
+          pt: "Portuguese",
+          pa: "Punjabi",
+          ro: "Romanian",
+          ru: "Russian",
+          sm: "Samoan",
+          gd: "Scottish Gaelic",
+          sr: "Serbian",
+          st: "Sesotho",
+          si: "Sinhala",
+          sk: "Slovak",
+          sl: "Slovenian",
+          so: "Somali",
+          es: "Spanish",
+          su: "Sundanese",
+          sw: "Swahili",
+          sv: "Swedish",
+          ta: "Tamil",
+          te: "Telugu",
+          th: "Thai",
+          tr: "Turkish",
+          uk: "Ukrainian",
+          ur: "Urdu",
+          uz: "Uzbek",
+          vi: "Vietnamese",
+          cy: "Welsh",
+          xh: "Xhosa",
+          yi: "Yiddish",
+          yo: "Yoruba",
+          zu: "Zulu",
+        };
+
+        // ✅ Generate list
+        Object.entries(languages).forEach(([code, name]) => {
+          const li = document.createElement("li");
+          li.textContent = name;
+          li.dataset.lang = code;
+          list.appendChild(li);
+        });
+
+        // ✅ Toggle list
+        toggle.addEventListener("click", () => {
+          list.style.display = list.style.display === "block" ? "none" : "block";
+        });
+
+        // ✅ Language click
+        list.addEventListener("click", (e) => {
+          if (e.target.tagName === "LI") {
+            const lang = e.target.getAttribute("data-lang");
+            const select = document.querySelector(".goog-te-combo");
+            if (select) {
+              select.value = lang;
+              select.dispatchEvent(new Event("change"));
+            }
+            list.style.display = "none";
+          }
+        });
+      });
+    </script>
     <script
       type="text/javascript"
       src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"
