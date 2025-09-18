@@ -477,7 +477,10 @@ const Dashboard = () => {
                   <input
                     type="text"
                     value={query}
-                    onChange={(e) => debouncedFetchSuggestions(e.target.value)}
+                    onChange={(e) => {
+                      setQuery(e.target.value);
+                      debouncedFetchSuggestions(e.target.value)
+                    }}
                     placeholder="Search for a location..."
                     className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                   />
@@ -531,5 +534,6 @@ const Dashboard = () => {
 
 export default Dashboard;
           
+
 
 
