@@ -1,9 +1,8 @@
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import Index from "./pages/Index";
@@ -16,53 +15,47 @@ import Profile from "./pages/Profile";
 import ProfileCompletion from "./components/ProfileCompletion";
 import NotFound from "./pages/NotFound";
 
-/**
- * Create a single instance of QueryClient that will be shared
- * across the entire application via the `QueryClientProvider`.
- */
+// Import the Police sign‑in page here
+import PoliceSignIn from "./pages/PoliceSignIn";
+
 const queryClient = new QueryClient();
 
 /**
- * App component is the root of the React application.
- * It brings together:
- *   • React‑Query global provider
- *   • Tooltip provider (context for the UI library)
- *   • Global toast components
- *   • Browser routing for all pages
+ * App – Top‑level application component.
  *
- * This version is intentionally verbose so that every section
- * is immediately clear to a reader new to the codebase.
+ * 1. Sets up React‑Query’s QueryClientProvider.
+ * 2. Wraps everything in a TooltipProvider (global UI context).
+ * 3. Renders global toast components (`Toaster` and `Sonner`).
+ * 4. Declares a BrowserRouter with every URL fragment that the app knows.
  */
 const App: React.FC = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        {/* Toast notifications from the UI library */}
+        {/* Global toast notifications */}
         <Toaster />
-
-        {/* Toast notifications from the Sonner package */}
         <Sonner />
 
-        {/* The main routing context */}
         <BrowserRouter>
           <Routes>
-            {/* Public routes that can be accessed without authentication */}
+            {/* Public routes */}
             <Route path="/" element={<Index />} />
             <Route path="/signin" element={<SignIn />} />
             <Route path="/signup" element={<SignUp />} />
 
-            {/* Authenticated user routes – these would normally be
-                guarded by a private route component, but the routing
-                table simply lists them for clarity */}
+            {/* User account routes */}
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/profile-completion" element={<ProfileCompletion />} />
 
-            {/* Admin‑only routes – similar structure as above */}
+            {/* Administration routes */}
             <Route path="/admin" element={<AdminLogin />} />
             <Route path="/admin-dashboard" element={<AdminDashboard />} />
 
-            {/* Catch‑all route for any path that does not match the above */}
+            {/* Police‑specific route – this is what the button in SignIn.tsx navigates to */}
+            <Route path="/police-signin" element={<PoliceSignIn />} />
+
+            {/* Catch‑all – renders the 404 page when no other route matches */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
@@ -72,3 +65,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+
