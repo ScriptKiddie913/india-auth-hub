@@ -16,27 +16,29 @@ interface UserLocation {
 
 /* ----- Map Component ------------------------------------------ */
 const AdminMap = () => {
-  /* ----- Local state ------------------------------------------- */
+  /* ----- State holding all latest user locations ------------- */
   const [userLocations, setUserLocations] = useState<UserLocation[]>([]);
 
   /* ----- Refs --------------------------------------------------- */
   const mapRef = useRef<google.maps.Map | null>(null);
-  const mapElement = useRef<HTMLDivElement | null>(null);
+  const mapEl   = useRef<HTMLDivElement | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
 
-  /* ----- Fetch user locations from Supabase -------------------- */
-  const fetchUserLocations = async () => {
+  /* -------------------------------------------------------------------------
+   * 1️⃣  Fetch & subscribe to user_locations
+   * --------------------------------------------------------------------- */
+  const fetchLocations = async () => {
     const { data, error } = await supabase
       .from("user_locations")
       .select("*")
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error("Supabase location fetch error:", error);
+      console.error("Supabase user_locations error:", error);
       return;
     }
 
-    /* Merge user names via profiles table (just like the dashboard) */
+    /* Merge name from the profiles table */
     if (data && data.length) {
       const ids = [...new Set(data.map((l) => l.user_id))];
       const { data: pro } = await supabase
@@ -54,28 +56,33 @@ const AdminMap = () => {
     }
   };
 
-  /* ----- Real‑time subscription ------------------------------- */
   useEffect(() => {
-    fetchUserLocations(); // initial load
+    /* Initial load */
+    fetchLocations();
 
+    /* Real‑time subscription –  user_locations inserts/updates */
     const channel = supabase
-      .channel("user-locations")
+      .channel("user_locations")
       .on(
         "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "user_locations",
-        },
-        () => fetchUserLocations()
+        { event: "INSERT", schema: "public", table: "user_locations" },
+        () => fetchLocations()
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "user_locations" },
+        () => fetchLocations()
       )
       .subscribe();
 
     return () => supabase.removeChannel(channel);
   }, []);
 
-  /* ----- Load Google Maps script ------------------------------ */
+  /* -------------------------------------------------------------------------
+   * 2️⃣  Load Google Maps script (free tier)
+   * --------------------------------------------------------------------- */
   useEffect(() => {
+    /* Script already present? */
     if (window.google?.maps?.Map) {
       initMap();
       return;
@@ -90,29 +97,37 @@ const AdminMap = () => {
     document.head.appendChild(script);
   }, []);
 
-  /* ----- Initialise map --------------------------------------- */
+  /* -------------------------------------------------------------------------
+   * 3️⃣  Initialise Map
+   * --------------------------------------------------------------------- */
   const initMap = () => {
-    if (!mapElement.current || !window.google) return;
+    if (!mapEl.current || !window.google) return;
 
-    const initialCenter =
+    /* Default centre – the newest point if any */
+    const defaultCenter =
       userLocations[0] !== undefined
         ? { lat: userLocations[0].latitude, lng: userLocations[0].longitude }
         : { lat: 0, lng: 0 };
 
-    mapRef.current = new window.google.maps.Map(mapElement.current, {
-      center: initialCenter,
+    mapRef.current = new window.google.maps.Map(mapEl.current, {
+      center: defaultCenter,
       zoom: userLocations.length ? 13 : 2,
     });
 
+    /* Draw the initial markers */
     addMarkers(userLocations);
   };
 
-  /* ----- Add / update markers --------------------------------- */
+  /* -------------------------------------------------------------------------
+   * 4️⃣  Add or replace markers
+   * --------------------------------------------------------------------- */
   const addMarkers = (locations: UserLocation[]) => {
+    /* Remove old markers */
     markersRef.current.forEach((m) => m.setMap(null));
     markersRef.current = [];
 
-    const newMarkers = locations.map((loc) => {
+    /* Add new markers */
+    const newMarkers: google.maps.Marker[] = locations.map((loc) => {
       const marker = new window.google.maps.Marker({
         position: { lat: loc.latitude, lng: loc.longitude },
         map: mapRef.current!,
@@ -123,6 +138,7 @@ const AdminMap = () => {
         },
       });
 
+      /* Small popup with name & timestamp */
       const info = new window.google.maps.InfoWindow({
         content: `<strong>${loc.profiles?.full_name ?? "Unknown User"}</strong><br>${new Date(
           loc.created_at
@@ -130,11 +146,7 @@ const AdminMap = () => {
       });
 
       marker.addListener("click", () => {
-        info.open({
-          anchor: marker,
-          map: mapRef.current!,
-          shouldFocus: false,
-        });
+        info.open({ anchor: marker, map: mapRef.current! });
       });
 
       return marker;
@@ -143,13 +155,15 @@ const AdminMap = () => {
     markersRef.current = newMarkers;
   };
 
-  /* ----- Re‑render markers when location data changes ----- */
+  /* When the array changes – re‑draw markers */
   useEffect(() => {
     if (!mapRef.current) return;
     addMarkers(userLocations);
   }, [userLocations]);
 
-  /* ----- Render ---------------------------------------------- */
+  /* -------------------------------------------------------------------------
+   * 5️⃣  Render
+   * --------------------------------------------------------------------- */
   return (
     <Card>
       <CardHeader>
@@ -162,14 +176,15 @@ const AdminMap = () => {
           {userLocations.length} active user{s(userLocations.length)}
         </div>
       </CardHeader>
+
       <CardContent>
-        <div ref={mapElement} className="w-full h-96 rounded-lg border bg-muted/10" />
+        <div ref={mapEl} className="w-full h-96 rounded-lg border bg-muted/10" />
       </CardContent>
     </Card>
   );
 };
 
-/* ----- Helper: pluralise ‘user’ -------------------------------- */
+/* ----- Helper: pluralise “user” -------------------------------- */
 function s(n: number): string {
   return n === 1 ? "" : "s";
 }
