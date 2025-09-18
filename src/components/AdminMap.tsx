@@ -1,133 +1,100 @@
-// src/pages/AdminMap.tsx
-import { useEffect, useRef, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { useEffect, useRef } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { MapPin, Users } from "lucide-react";
 
-interface Tourist {
+interface UserLocation {
   id: string;
-  name: string;
-  email: string;
+  user_id: string;
   latitude: number;
   longitude: number;
+  created_at: string;
+  profiles?: {
+    full_name: string;
+  };
 }
 
-export default function AdminMap() {
-  const [tourists, setTourists] = useState<Tourist[]>([]);
-  const [loading, setLoading] = useState(true);
-  const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstance = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<google.maps.Marker[]>([]);
+interface AdminMapProps {
+  userLocations: UserLocation[];
+}
 
-  // ✅ Load Google Maps script dynamically
+const AdminMap = ({ userLocations }: AdminMapProps) => {
+  const mapRef = useRef<HTMLDivElement | null>(null);
+  const mapInstance = useRef<google.maps.Map>();
+
   useEffect(() => {
-    const existingScript = document.getElementById("google-maps");
-    if (!existingScript) {
+    // Load Google Maps script dynamically
+    const loadGoogleMaps = () => {
+      if (document.getElementById("google-maps-script")) return;
+
       const script = document.createElement("script");
-      script.id = "google-maps";
+      script.id = "google-maps-script";
       script.src = `https://maps.googleapis.com/maps/api/js?key=${
         import.meta.env.VITE_GOOGLE_MAPS_API_KEY
       }&libraries=places`;
       script.async = true;
       script.defer = true;
-      script.onload = initMap;
       document.body.appendChild(script);
-    } else {
-      initMap();
-    }
-  }, []);
+    };
 
-  // ✅ Initialize map
-  const initMap = () => {
-    if (mapRef.current && !mapInstance.current) {
-      mapInstance.current = new google.maps.Map(mapRef.current, {
-        center: { lat: 20.5937, lng: 78.9629 }, // Center on India
+    loadGoogleMaps();
+
+    const initMap = () => {
+      if (!mapRef.current || !window.google) return;
+
+      const defaultCenter = {
+        lat: userLocations[0]?.latitude || 20.5937, // Default India center
+        lng: userLocations[0]?.longitude || 78.9629,
+      };
+
+      const map = new google.maps.Map(mapRef.current, {
+        center: defaultCenter,
         zoom: 5,
       });
-    }
-  };
 
-  // ✅ Fetch tourists from Supabase
-  useEffect(() => {
-    const fetchTourists = async () => {
-      setLoading(true);
-      const { data, error } = await supabase.from("tourists").select("*");
-      if (error) {
-        console.error("Error fetching tourists:", error);
-      } else {
-        setTourists(data || []);
-      }
-      setLoading(false);
-    };
+      // Save instance for reuse
+      mapInstance.current = map;
 
-    fetchTourists();
-
-    // ✅ Realtime updates (optional)
-    const channel = supabase
-      .channel("realtime-tourists")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "tourists" },
-        (payload) => {
-          console.log("Realtime update:", payload);
-          fetchTourists();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  // ✅ Add markers on the map when tourists change
-  useEffect(() => {
-    if (mapInstance.current) {
-      // Clear old markers
-      markersRef.current.forEach((m) => m.setMap(null));
-      markersRef.current = [];
-
-      tourists.forEach((tourist) => {
-        if (tourist.latitude && tourist.longitude) {
-          const marker = new google.maps.Marker({
-            position: { lat: tourist.latitude, lng: tourist.longitude },
-            map: mapInstance.current!,
-            title: tourist.name,
-          });
-
-          const infoWindow = new google.maps.InfoWindow({
-            content: `
-              <div>
-                <h3>${tourist.name}</h3>
-                <p>${tourist.email}</p>
-                <p>Lat: ${tourist.latitude}, Lng: ${tourist.longitude}</p>
-              </div>
-            `,
-          });
-
-          marker.addListener("click", () => {
-            infoWindow.open(mapInstance.current, marker);
-          });
-
-          markersRef.current.push(marker);
-        }
+      // Add markers
+      userLocations.forEach((loc) => {
+        new google.maps.Marker({
+          position: { lat: loc.latitude, lng: loc.longitude },
+          map,
+          title: loc.profiles?.full_name || `User ${loc.user_id}`,
+        });
       });
-    }
-  }, [tourists]);
+    };
+
+    // Initialize after script loads
+    const interval = setInterval(() => {
+      if (window.google && mapRef.current && !mapInstance.current) {
+        initMap();
+        clearInterval(interval);
+      }
+    }, 500);
+
+    return () => clearInterval(interval);
+  }, [userLocations]);
 
   return (
-    <div className="p-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Admin Map - Tourist Tracking</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <p>Loading tourists...</p>
-          ) : (
-            <div ref={mapRef} className="w-full h-[600px] rounded-lg shadow-lg" />
-          )}
-        </CardContent>
-      </Card>
-    </div>
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-2xl font-bold flex items-center gap-2">
+          <MapPin className="h-6 w-6 text-primary" />
+          Live User Locations Map
+        </CardTitle>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Users className="h-4 w-4" />
+          {userLocations.length} active users
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div
+          ref={mapRef}
+          className="w-full h-96 rounded-lg border bg-muted/10"
+        />
+      </CardContent>
+    </Card>
   );
-}
+};
+
+export default AdminMap;
