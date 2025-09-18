@@ -532,7 +532,23 @@ const Dashboard = () => {
                         </CardDescription>
                       </div>
                     </div>
-                 
+                      <Button
+                      onClick={handlePanicButton}
+                      size="lg"
+                      className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-bold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 animate-pulse"
+                    >
+                      <Phone className="w-6 h-6 mr-2" />
+                      🚨 PANIC ALERT
+                    </Button>
+                    <Button
+                      onClick={handlePanicButton}
+                      variant="destructive"
+                      size="lg"
+                      className="bg-red-600 hover:bg-red-700 text-white font-bold animate-pulse"
+                    >
+                      <AlertTriangle className="w-5 h-5 mr-2" />
+                      PANIC
+                    </Button>
                   </div>
                 </CardHeader>
               </Card>
