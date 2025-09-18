@@ -17,27 +17,12 @@ interface AdminMapProps {
 }
 
 const AdminMap = ({ userLocations }: AdminMapProps) => {
-  // Fallback center: India
-  const defaultCenter = { lat: 20.5937, lng: 78.9629 };
-
-  // If users exist, use first one as center
-  const center = userLocations.length
-    ? { lat: userLocations[0].latitude, lng: userLocations[0].longitude }
-    : defaultCenter;
-
-  // Build OSM URL (only centers on one location)
-  const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${
-    center.lng - 0.5
-  }%2C${center.lat - 0.5}%2C${center.lng + 0.5}%2C${center.lat + 0.5}&layer=mapnik&marker=${
-    center.lat
-  }%2C${center.lng}`;
-
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-2xl font-bold flex items-center gap-2">
           <MapPin className="h-6 w-6 text-primary" />
-          Live User Locations
+          Live User Locations Map
         </CardTitle>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Users className="h-4 w-4" />
@@ -45,15 +30,19 @@ const AdminMap = ({ userLocations }: AdminMapProps) => {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="w-full h-96 rounded-lg overflow-hidden">
-          <iframe
-            title="User Locations"
-            width="100%"
-            height="100%"
-            frameBorder="0"
-            scrolling="no"
-            src={mapUrl}
-          ></iframe>
+        <div className="w-full h-96 rounded-lg border bg-muted/10 flex items-center justify-center">
+          <div className="text-center space-y-4">
+            <MapPin className="h-16 w-16 text-muted-foreground mx-auto" />
+            <div>
+              <h3 className="text-lg font-semibold">Interactive Map Coming Soon</h3>
+              <p className="text-muted-foreground">Google Maps integration will be available in the next update</p>
+            </div>
+            {userLocations.length > 0 && (
+              <div className="text-sm text-muted-foreground">
+                Currently tracking {userLocations.length} user locations
+              </div>
+            )}
+          </div>
         </div>
       </CardContent>
     </Card>

@@ -4,8 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Shield, LogOut, AlertTriangle } from "lucide-react";
-import { supabase } from "@/lib/supabaseClient"; // ✅ correct import
-import AdminMap from "@/components/AdminMap"; // iframe map component
+import { supabase } from "@/lib/supabaseClient"; // ✅ updated import
+import AdminMap from "@/components/AdminMap"; // your map component
 import LoadingSpinner from "@/components/LoadingSpinner"; // optional spinner
 
 type UserLocation = {
@@ -21,7 +21,7 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  // ✅ Fetch initial user locations from Supabase
+  // Fetch initial data
   const fetchUserLocations = async () => {
     setLoading(true);
     const { data, error } = await supabase
@@ -41,7 +41,7 @@ const AdminDashboard = () => {
     setLoading(false);
   };
 
-  // ✅ Subscribe to realtime changes in user_locations
+  // Subscribe to realtime changes
   const subscribeToLocations = () => {
     const channel = supabase
       .channel("location-changes")
@@ -60,7 +60,6 @@ const AdminDashboard = () => {
     };
   };
 
-  // ✅ Run fetch + subscribe on mount
   useEffect(() => {
     fetchUserLocations();
     const cleanup = subscribeToLocations();
@@ -71,7 +70,7 @@ const AdminDashboard = () => {
 
   return (
     <div className="p-6 space-y-6">
-      {/* ✅ Header */}
+      {/* Header */}
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Shield className="w-6 h-6 text-primary" />
@@ -83,7 +82,7 @@ const AdminDashboard = () => {
         </Button>
       </div>
 
-      {/* ✅ Map Section */}
+      {/* Map Section */}
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Live Tourist Map</CardTitle>
@@ -98,7 +97,7 @@ const AdminDashboard = () => {
         </CardContent>
       </Card>
 
-      {/* ✅ User Location Details */}
+      {/* User Location Details */}
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Tourist Locations</CardTitle>
@@ -138,4 +137,3 @@ const AdminDashboard = () => {
 };
 
 export default AdminDashboard;
-
