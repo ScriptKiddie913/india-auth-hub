@@ -59,7 +59,7 @@ const Dashboard = () => {
   // ✅ Geofence state
   const geofenceStatus = useRef<Record<string, boolean>>({});
   const geofenceCircles = useRef<Record<string, any>>({});
-  const GEOFENCE_RADIUS = 1000; // meters
+  const GEOFENCE_RADIUS = 5000; // meters
 
   // ✅ Beep sound
   const beepRef = useRef<HTMLAudioElement | null>(null);
