@@ -13,7 +13,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Palmtree, Mail, Lock, Eye, EyeOff } from "lucide-react";
+import { Palmtree, Mail, Lock, Eye, EyeOff, Shield } from "lucide-react";
 
 const SignIn = () => {
   const [email, setEmail] = useState("");
@@ -62,7 +62,7 @@ const SignIn = () => {
       className="min-h-screen flex items-center justify-center bg-cover bg-center relative p-4"
       style={{ backgroundImage: "url('/image/signin.jpg')" }}
     >
-      {/* Overlay for better readability */}
+      {/* Overlay */}
       <div className="absolute inset-0 bg-black/40" />
 
       <Card className="w-full max-w-md mx-auto backdrop-blur-md bg-white/90 shadow-2xl border border-white/20 relative z-10 animate-fade-in">
@@ -128,7 +128,7 @@ const SignIn = () => {
             {/* Submit */}
             <Button
               type="submit"
-              className="w-full h-12 bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02]"
+              className="w-full h-12 bg-gradient-to-r from-primary to-accent text-white font-semibold"
               disabled={loading}
             >
               {loading ? "Signing in..." : "Sign In"}
@@ -140,16 +140,24 @@ const SignIn = () => {
             <Separator />
             <div className="absolute inset-0 flex items-center justify-center">
               <span className="bg-white/90 px-4 text-sm text-muted-foreground">
-                Don't have an account?
+                Other Options
               </span>
             </div>
           </div>
 
-          {/* Signup link */}
-          <div className="text-center">
+          {/* Police Sign In button */}
+          <div className="text-center space-y-4">
+            <Button
+              onClick={() => navigate("/police-signin")}
+              className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-800 text-white font-semibold flex items-center justify-center gap-2"
+            >
+              <Shield className="h-5 w-5" />
+              Police Sign In
+            </Button>
+
             <Link
               to="/signup"
-              className="text-primary hover:text-accent font-medium transition-colors duration-200 underline-offset-4 hover:underline"
+              className="block text-primary hover:text-accent font-medium underline-offset-4 hover:underline"
             >
               Create a new account
             </Link>
