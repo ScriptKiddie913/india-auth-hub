@@ -7,21 +7,24 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Shield, LogOut, AlertTriangle, MapPin, Users, Clock, HelpCircle, Phone, CheckCircle, User, FileText } from "lucide-react";
+import {
+  Shield,
+  LogOut,
+  AlertTriangle,
+  MapPin,
+  Users,
+  Clock,
+  HelpCircle,
+  Phone,
+  CheckCircle,
+  User,
+  FileText
+} from "lucide-react";
 import AdminMap from "@/components/AdminMap";
 import AdminHelpDesk from "@/components/AdminHelpDesk";
 import { format } from "date-fns";
 
-/* ------- Types --------------------------------------------------- */
-interface UserLocation {
-  id: string;
-  user_id: string;
-  latitude: number;
-  longitude: number;
-  created_at: string;
-  profiles?: { full_name: string };
-}
-
+/* ----- Types --------------------------------------------------- */
 interface PanicAlert {
   id: string;
   user_id: string;
@@ -33,8 +36,9 @@ interface PanicAlert {
   profiles?: { full_name: string };
 }
 
-/* ------- Page Component ------------------------------------------ */
+/* ----- Page Component ------------------------------------------ */
 const AdminDashboard = () => {
+  /* ----- State --------------------------------------------------- */
   const [panicAlerts, setPanicAlerts] = useState<PanicAlert[]>([]);
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,7 +46,7 @@ const AdminDashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  /* ----- Effect: Auth + Data Loading + Real‑time subscriptions */
+  /* ----- Effect – Auth + initial data + realtime            */
   useEffect(() => {
     const adminAuth = localStorage.getItem("adminAuth");
     if (!adminAuth) {
@@ -53,7 +57,7 @@ const AdminDashboard = () => {
     fetchPanicAlerts();
     fetchAllUsers();
 
-    /* ── Real‑time – Panic alerts ───────────────────────────── */
+    /* ---- Real‑time – panic alerts ---------------------------- */
     const panicChannel = supabase
       .channel("panic-alerts")
       .on(
@@ -77,7 +81,7 @@ const AdminDashboard = () => {
     return () => supabase.removeChannel(panicChannel);
   }, [navigate, toast]);
 
-  /* ----- Fetch panic alerts --------------------------------------- */
+  /* ---- Fetch panic alerts ----------------------------------- */
   const fetchPanicAlerts = async () => {
     try {
       const { data, error } = await supabase
@@ -113,7 +117,7 @@ const AdminDashboard = () => {
     }
   };
 
-  /* ----- Fetch user profiles ------------------------------------ */
+  /* ---- Fetch all profiles --------------------------------- */
   const fetchAllUsers = async () => {
     try {
       const { data, error } = await supabase
@@ -132,6 +136,7 @@ const AdminDashboard = () => {
     }
   };
 
+  /* ---- Resolve panic alert --------------------------------- */
   const handleResolveAlert = async (alertId: string) => {
     try {
       const { error } = await supabase
@@ -159,12 +164,13 @@ const AdminDashboard = () => {
     }
   };
 
+  /* ---- Logout --------------------------------------------- */
   const handleLogout = () => {
     localStorage.removeItem("adminAuth");
     navigate("/admin");
   };
 
-  /* ----- Loading state ------------------------------------------- */
+  /* ----- Loading state -------------------------------------- */
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary/20 to-accent/10">
@@ -173,7 +179,7 @@ const AdminDashboard = () => {
     );
   }
 
-  /* ----- Main Layout -------------------------------------------- */
+  /* ----- Main Layout ---------------------------------------- */
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-secondary/20 to-accent/10">
       {/* Header */}
@@ -208,15 +214,16 @@ const AdminDashboard = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          {/* ── Tabs list ----------------------------------------- */}
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
             <TabsTrigger value="users">User Management</TabsTrigger>
             <TabsTrigger value="helpdesk">Help Desk</TabsTrigger>
           </TabsList>
 
-          {/* ── Dashboard Tab */}
+          {/* ── Dashboard tab ------------------------------------ */}
           <TabsContent value="dashboard" className="space-y-6">
-            {/* Stats Cards */}
+            {/* Stats cards – no active‑user count needed here */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -224,7 +231,6 @@ const AdminDashboard = () => {
                   <Users className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  {/* We do not have a real active‑user count from supabase; use the map instead */}
                   <div className="text-2xl font-bold">-</div>
                 </CardContent>
               </Card>
@@ -252,7 +258,7 @@ const AdminDashboard = () => {
               </Card>
             </div>
 
-            {/* Panic Alerts List */}
+            {/* Panic alerts list */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-2xl font-bold flex items-center gap-2">
@@ -322,10 +328,10 @@ const AdminDashboard = () => {
               </CardContent>
             </Card>
 
-            {/* Live User Locations Map */}
+            {/* Live user‑locations map  -  (the map fetches data itself) */}
             <AdminMap />
 
-            {/* User Locations List (raw JSON) – optional */}
+            {/* Optional “raw list” card – can be omitted if you only want the map */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-2xl font-bold flex items-center gap-2">
@@ -333,16 +339,18 @@ const AdminDashboard = () => {
                   User Locations List
                 </CardTitle>
                 <CardDescription>
-                  Recent location updates from all users
+                  (Map component reads the data directly – this card is for reference only)
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <p className="text-muted-foreground">Map component pulls the data itself.</p>
+                <p className="text-muted-foreground text-center py-8">
+                  The map itself pulls all user locations from the database.
+                </p>
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* ── User Management Tab */}
+          {/* ── User Management tab --------------------------------- */}
           <TabsContent value="users" className="space-y-6">
             <Card>
               <CardHeader>
@@ -440,7 +448,7 @@ const AdminDashboard = () => {
             </Card>
           </TabsContent>
 
-          {/* ── Help Desk Tab */}
+          {/* ── Help Desk tab ------------------------------------- */}
           <TabsContent value="helpdesk">
             <Card>
               <CardHeader>
@@ -464,3 +472,4 @@ const AdminDashboard = () => {
 };
 
 export default AdminDashboard;
+
