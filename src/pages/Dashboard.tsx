@@ -267,7 +267,18 @@ const Dashboard = () => {
     }
   };
 
-  // ✅ Fetch location suggestions from OpenStreetMap
+  // ✅ Debounce function
+  const debounce = (func: Function, delay: number) => {
+    let timer: NodeJS.Timeout;
+    return (...args: any[]) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        func(...args);
+      }, delay);
+    };
+  };
+
+  // ✅ Fetch location suggestions from Photon API (fast + stable)
   const fetchSuggestions = async (value: string) => {
     setQuery(value);
     if (value.length < 3) {
@@ -276,26 +287,31 @@ const Dashboard = () => {
     }
     try {
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-          value
-        )}`
+        `https://photon.komoot.io/api/?q=${encodeURIComponent(value)}&limit=10`
       );
       const data = await res.json();
-      setSuggestions(data);
+      if (data && data.features) {
+        setSuggestions(data.features);
+      }
     } catch (err) {
       console.error("Error fetching location suggestions:", err);
     }
   };
 
+  const debouncedFetchSuggestions = useRef(
+    debounce(fetchSuggestions, 400)
+  ).current;
+
   // ✅ Add destination
   const addDestination = async (place: any) => {
     if (!user) return;
     try {
+      const coords = place.geometry.coordinates;
       const { error } = await supabase.from("destinations").insert({
         user_id: user.id,
-        name: place.display_name,
-        latitude: parseFloat(place.lat),
-        longitude: parseFloat(place.lon),
+        name: place.properties.name || place.properties.city || place.properties.country || "Unnamed Place",
+        latitude: parseFloat(coords[1]),
+        longitude: parseFloat(coords[0]),
       });
       if (error) throw error;
       await fetchDestinations(user.id);
@@ -452,7 +468,7 @@ const Dashboard = () => {
                   Plan Your Destinations
                 </CardTitle>
                 <CardDescription>
-                  Search for locations using OpenStreetMap and add them to your
+                  Search for locations using Photon API and add them to your
                   travel list.
                 </CardDescription>
               </CardHeader>
@@ -461,7 +477,7 @@ const Dashboard = () => {
                   <input
                     type="text"
                     value={query}
-                    onChange={(e) => fetchSuggestions(e.target.value)}
+                    onChange={(e) => debouncedFetchSuggestions(e.target.value)}
                     placeholder="Search for a location..."
                     className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                   />
@@ -474,7 +490,11 @@ const Dashboard = () => {
                           onClick={() => addDestination(place)}
                         >
                           <MapPin className="w-4 h-4 text-primary" />
-                          <span>{place.display_name}</span>
+                          <span>
+                            {place.properties.name ||
+                              place.properties.city ||
+                              place.properties.country}
+                          </span>
                         </li>
                       ))}
                     </ul>
@@ -510,3 +530,4 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+          
