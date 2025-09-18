@@ -15,9 +15,6 @@ interface ChatThread {
   status: string;
   created_at: string;
   updated_at: string;
-  profiles?: {
-    full_name: string;
-  };
 }
 
 interface ChatMessage {
@@ -47,7 +44,7 @@ function AdminChatWindow({ thread, adminUserId }: { thread: ChatThread, adminUse
                 .order('created_at', { ascending: true });
             
             if (error) throw error;
-            setMessages(data || []);
+            setMessages(data as ChatMessage[] || []);
         } catch (error: any) {
             toast({
                 title: "Error loading messages",
@@ -78,7 +75,7 @@ function AdminChatWindow({ thread, adminUserId }: { thread: ChatThread, adminUse
                     sender_id: adminUserId,
                     content_type: contentType,
                     content: content
-                });
+                } as any);
             
             if (error) throw error;
             setNewMessage('');
@@ -184,19 +181,18 @@ export default function AdminHelpDesk() {
 
     const initializeAdminDesk = useCallback(async () => {
         try {
-            const { data, error } = await supabase
+            let query = supabase
                 .from('chat_threads')
-                .select(`
-                    *,
-                    profiles:user_id (
-                        full_name
-                    )
-                `)
-                .eq(filter === 'all' ? 'status' : 'status', filter === 'all' ? filter : filter)
-                .order('updated_at', { ascending: false });
+                .select('*');
+            
+            if (filter !== 'all') {
+                query = query.eq('status', filter);
+            }
+            
+            const { data, error } = await query.order('updated_at', { ascending: false });
             
             if (error) throw error;
-            setThreads(data || []);
+            setThreads(data as ChatThread[] || []);
         } catch (error: any) {
             toast({
                 title: "Error loading tickets",
@@ -216,7 +212,7 @@ export default function AdminHelpDesk() {
         try {
             const { error } = await supabase
                 .from('chat_threads')
-                .update({ status: 'resolved' })
+                .update({ status: 'resolved' } as any)
                 .eq('id', threadId);
             
             if (error) throw error;
@@ -228,7 +224,7 @@ export default function AdminHelpDesk() {
                     sender_id: 'system',
                     content_type: 'system',
                     content: 'Thread marked as resolved by admin.'
-                });
+                } as any);
             
             initializeAdminDesk();
             if (activeThread?.id === threadId) {
@@ -289,7 +285,7 @@ export default function AdminHelpDesk() {
                             >
                                 <p className="font-semibold">{thread.subject}</p>
                                 <p className="text-sm text-muted-foreground truncate">
-                                    {thread.profiles?.full_name || thread.user_id}
+                                    User: {thread.user_id}
                                 </p>
                                 <div className="flex justify-between items-center text-xs mt-1">
                                     <Badge variant={thread.status === 'open' ? 'destructive' : 'default'}>
@@ -314,7 +310,7 @@ export default function AdminHelpDesk() {
                         <CardTitle>{activeThread ? activeThread.subject : "Select a ticket"}</CardTitle>
                         {activeThread && (
                             <p className="text-sm text-muted-foreground">
-                                {activeThread.profiles?.full_name || activeThread.user_id}
+                                User: {activeThread.user_id}
                             </p>
                         )}
                     </div>

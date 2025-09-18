@@ -47,7 +47,7 @@ function ChatWindow({ thread, currentUser }: { thread: ChatThread, currentUser: 
                 .order('created_at', { ascending: true });
             
             if (error) throw error;
-            setMessages(data || []);
+            setMessages(data as ChatMessage[] || []);
         } catch (error: any) {
             toast({
                 title: "Error loading messages",
@@ -78,7 +78,7 @@ function ChatWindow({ thread, currentUser }: { thread: ChatThread, currentUser: 
                     sender_id: currentUser.id,
                     content_type: contentType,
                     content: content
-                });
+                } as any);
             
             if (error) throw error;
             setNewMessage('');
@@ -198,7 +198,7 @@ export default function HelpDesk() {
                 .order('updated_at', { ascending: false });
             
             if (error) throw error;
-            setThreads(data || []);
+            setThreads(data as ChatThread[] || []);
         } catch (error: any) {
             toast({
                 title: "Error loading helpdesk",
@@ -217,7 +217,7 @@ export default function HelpDesk() {
                     user_id: user.id,
                     subject: newSubject,
                     status: 'open'
-                })
+                } as any)
                 .select()
                 .single();
             
@@ -231,7 +231,7 @@ export default function HelpDesk() {
                     sender_id: 'system',
                     content_type: 'system',
                     content: 'Thread created. An admin will be with you shortly.'
-                });
+                } as any);
             
             setNewSubject('');
             setIsDialogOpen(false);

@@ -16,9 +16,6 @@ interface UserLocation {
   latitude: number;
   longitude: number;
   created_at: string;
-  profiles?: {
-    full_name: string;
-  };
 }
 
 interface PanicAlert {
@@ -29,9 +26,6 @@ interface PanicAlert {
   longitude: number;
   status: string;
   created_at: string;
-  profiles?: {
-    full_name: string;
-  };
 }
 
 const AdminDashboard = () => {
@@ -91,16 +85,11 @@ const AdminDashboard = () => {
     try {
       const { data, error } = await supabase
         .from("user_locations")
-        .select(`
-          *,
-          profiles:user_id (
-            full_name
-          )
-        `)
+        .select('*')
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setUserLocations(data || []);
+      setUserLocations(data as UserLocation[] || []);
     } catch (error: any) {
       toast({
         title: "Error fetching user locations",
@@ -114,16 +103,11 @@ const AdminDashboard = () => {
     try {
       const { data, error } = await supabase
         .from("panic_alerts")
-        .select(`
-          *,
-          profiles:user_id (
-            full_name
-          )
-        `)
+        .select('*')
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setPanicAlerts(data || []);
+      setPanicAlerts(data as PanicAlert[] || []);
       setLoading(false);
     } catch (error: any) {
       toast({
@@ -337,7 +321,7 @@ const AdminDashboard = () => {
                       <div className="flex items-center justify-between">
                         <div>
                           <div className="font-semibold">
-                            {location.profiles?.full_name || `User ${location.user_id}`}
+                            User: {location.user_id}
                           </div>
                           <div className="text-sm text-muted-foreground">
                             {new Date(location.created_at).toLocaleString()}

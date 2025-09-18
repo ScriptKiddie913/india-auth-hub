@@ -52,13 +52,13 @@ const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("dashboard");
 
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstance = useRef<google.maps.Map | null>(null);
-  const markerRef = useRef<google.maps.Marker | null>(null);
+  const mapInstance = useRef<any>(null);
+  const markerRef = useRef<any>(null);
   const isFirstLoad = useRef(true);
 
   // ✅ Geofence state
   const geofenceStatus = useRef<Record<string, boolean>>({});
-  const geofenceCircles = useRef<Record<string, google.maps.Circle>>({});
+  const geofenceCircles = useRef<Record<string, any>>({});
   const GEOFENCE_RADIUS = 500; // meters
 
   // ✅ Beep sound
@@ -116,12 +116,12 @@ const Dashboard = () => {
           setLocation({ lat, lng });
 
           // Initialize map once
-          if (mapRef.current && !mapInstance.current && window.google) {
-            mapInstance.current = new google.maps.Map(mapRef.current, {
+          if (mapRef.current && !mapInstance.current && (window as any).google) {
+            mapInstance.current = new (window as any).google.maps.Map(mapRef.current, {
               center: { lat, lng },
               zoom: 15,
             });
-            markerRef.current = new google.maps.Marker({
+            markerRef.current = new (window as any).google.maps.Marker({
               position: { lat, lng },
               map: mapInstance.current,
               title: "You are here",
@@ -144,7 +144,7 @@ const Dashboard = () => {
             destinations.forEach((dest) => {
               if (dest.latitude && dest.longitude) {
                 if (!geofenceCircles.current[dest.id]) {
-                  const circle = new google.maps.Circle({
+                  const circle = new (window as any).google.maps.Circle({
                     strokeColor: "#00FF00",
                     strokeOpacity: 0.8,
                     strokeWeight: 2,
