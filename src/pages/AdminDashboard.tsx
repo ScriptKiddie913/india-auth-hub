@@ -35,8 +35,6 @@ interface PanicAlert {
 
 /* ------- Page Component ------------------------------------------ */
 const AdminDashboard = () => {
-  /* ----- State --------------------------------------------------- */
-  const [userLocations, setUserLocations] = useState<UserLocation[]>([]);
   const [panicAlerts, setPanicAlerts] = useState<PanicAlert[]>([]);
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,12 +50,10 @@ const AdminDashboard = () => {
       return;
     }
 
-    /* ------- Fetch initial data ---------------------------------- */
-    fetchUserLocations();
     fetchPanicAlerts();
     fetchAllUsers();
 
-    /* ------- Real‑time – Panic alerts --------------------------- */
+    /* ── Real‑time – Panic alerts ───────────────────────────── */
     const panicChannel = supabase
       .channel("panic-alerts")
       .on(
@@ -78,63 +74,10 @@ const AdminDashboard = () => {
       )
       .subscribe();
 
-    /* ------- Real‑time – User locations ------------------------ */
-    const locationChannel = supabase
-      .channel("user-locations")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "user_locations",
-        },
-        () => {
-          fetchUserLocations();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(panicChannel);
-      supabase.removeChannel(locationChannel);
-    };
+    return () => supabase.removeChannel(panicChannel);
   }, [navigate, toast]);
 
-  /* ----- Async CRUD helpers ------------------------------------- */
-  const fetchUserLocations = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("user_locations")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-
-      /* Join with profiles for user names */
-      if (data && data.length) {
-        const userIds = [...new Set(data.map((loc) => loc.user_id))];
-        const { data: profiles } = await supabase
-          .from("profiles")
-          .select("user_id, full_name")
-          .in("user_id", userIds);
-
-        const merged = data.map((loc) => ({
-          ...loc,
-          profiles: profiles?.find((p) => p.user_id === loc.user_id),
-        }));
-        setUserLocations(merged as UserLocation[]);
-      } else {
-        setUserLocations([]);
-      }
-    } catch (err: any) {
-      toast({
-        title: "Error fetching user locations",
-        description: err.message,
-        variant: "destructive",
-      });
-    }
-  };
-
+  /* ----- Fetch panic alerts --------------------------------------- */
   const fetchPanicAlerts = async () => {
     try {
       const { data, error } = await supabase
@@ -170,6 +113,7 @@ const AdminDashboard = () => {
     }
   };
 
+  /* ----- Fetch user profiles ------------------------------------ */
   const fetchAllUsers = async () => {
     try {
       const { data, error } = await supabase
@@ -264,13 +208,13 @@ const AdminDashboard = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          {/* ── Dashboard Tab ───────────────────────────────────── */}
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
             <TabsTrigger value="users">User Management</TabsTrigger>
             <TabsTrigger value="helpdesk">Help Desk</TabsTrigger>
           </TabsList>
 
+          {/* ── Dashboard Tab */}
           <TabsContent value="dashboard" className="space-y-6">
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -280,7 +224,8 @@ const AdminDashboard = () => {
                   <Users className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{userLocations.length}</div>
+                  {/* We do not have a real active‑user count from supabase; use the map instead */}
+                  <div className="text-2xl font-bold">-</div>
                 </CardContent>
               </Card>
 
@@ -307,7 +252,7 @@ const AdminDashboard = () => {
               </Card>
             </div>
 
-            {/* Panic Alerts Section */}
+            {/* Panic Alerts List */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-2xl font-bold flex items-center gap-2">
@@ -320,7 +265,9 @@ const AdminDashboard = () => {
               </CardHeader>
               <CardContent>
                 {panicAlerts.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-8">No panic alerts</p>
+                  <p className="text-muted-foreground text-center py-8">
+                    No panic alerts
+                  </p>
                 ) : (
                   <div className="space-y-4">
                     {panicAlerts.map((alert) => (
@@ -335,11 +282,15 @@ const AdminDashboard = () => {
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-2">
-                              <Badge variant={alert.status === "active" ? "destructive" : "secondary"}>
+                              <Badge
+                                variant={
+                                  alert.status === "active" ? "destructive" : "secondary"
+                                }
+                              >
                                 {alert.status}
                               </Badge>
                               <span className="font-semibold">
-                                {alert.profiles?.full_name || "Unknown User"}
+                                {alert.profiles?.full_name ?? "Unknown User"}
                               </span>
                               <span className="text-sm text-muted-foreground">
                                 {new Date(alert.created_at).toLocaleString()}
@@ -371,10 +322,10 @@ const AdminDashboard = () => {
               </CardContent>
             </Card>
 
-            {/* Map Section – **INSERT MAP COMPONENT HERE** */}
-            <AdminMap userLocations={userLocations} />
+            {/* Live User Locations Map */}
+            <AdminMap />
 
-            {/* User Locations List */}
+            {/* User Locations List (raw JSON) – optional */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-2xl font-bold flex items-center gap-2">
@@ -386,38 +337,12 @@ const AdminDashboard = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {userLocations.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-8">No user locations</p>
-                ) : (
-                  <div className="space-y-4 max-h-96 overflow-y-auto">
-                    {userLocations.map((location) => (
-                      <div
-                        key={location.id}
-                        className="p-4 rounded-lg border bg-card"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <div className="font-semibold">
-                              {location.profiles?.full_name || "Unknown User"}
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              {new Date(location.created_at).toLocaleString()}
-                            </div>
-                          </div>
-                          <div className="text-right text-sm">
-                            <div>Lat: {location.latitude.toFixed(6)}</div>
-                            <div>Lng: {location.longitude.toFixed(6)}</div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <p className="text-muted-foreground">Map component pulls the data itself.</p>
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* ── User Management Tab ────────────────────────────────────── */}
+          {/* ── User Management Tab */}
           <TabsContent value="users" className="space-y-6">
             <Card>
               <CardHeader>
@@ -462,7 +387,9 @@ const AdminDashboard = () => {
                                     </div>
                                     <div className="flex items-center gap-2">
                                       <MapPin className="w-4 h-4 text-muted-foreground" />
-                                      <span className="text-sm">{user.nationality || "No nationality provided"}</span>
+                                      <span className="text-sm">
+                                        {user.nationality || "No nationality provided"}
+                                      </span>
                                     </div>
                                   </div>
 
@@ -470,13 +397,17 @@ const AdminDashboard = () => {
                                     {user.passport_number && (
                                       <div className="flex items-center gap-2">
                                         <FileText className="w-4 h-4 text-muted-foreground" />
-                                        <span className="text-sm">Passport: {user.passport_number}</span>
+                                        <span className="text-sm">
+                                          Passport: {user.passport_number}
+                                        </span>
                                       </div>
                                     )}
                                     {user.aadhaar_number && (
                                       <div className="flex items-center gap-2">
                                         <FileText className="w-4 h-4 text-muted-foreground" />
-                                        <span className="text-sm">Aadhaar: {user.aadhaar_number}</span>
+                                        <span className="text-sm">
+                                          Aadhaar: {user.aadhaar_number}
+                                        </span>
                                       </div>
                                     )}
                                   </div>
@@ -509,7 +440,7 @@ const AdminDashboard = () => {
             </Card>
           </TabsContent>
 
-          {/* ── Help Desk Tab ────────────────────────────────────────── */}
+          {/* ── Help Desk Tab */}
           <TabsContent value="helpdesk">
             <Card>
               <CardHeader>
