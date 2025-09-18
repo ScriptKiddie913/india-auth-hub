@@ -1,9 +1,16 @@
 /* src/pages/PoliceDashboard.tsx */
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Shield, LogOut, AlertTriangle } from "lucide-react";
 
 import PoliceMap from "@/components/PoliceMap";
@@ -14,13 +21,59 @@ const PoliceDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  /* ---------- Logout ---------- */
+  /* -------- Authentication -------- */
+  const [authState, setAuthState] = useState<"loading" | "auth" | "no-auth">(
+    "loading",
+  );
+
+  // 1️⃣  Initial session check
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!data?.session?.user) {
+        setAuthState("no-auth");
+        navigate("/police-signin");
+      } else {
+        setAuthState("auth");
+      }
+    };
+    checkSession();
+  }, [navigate]);
+
+  // 2️⃣  Live auth state listener – redirects immediately on logout
+  useEffect(() => {
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (!session?.user) {
+          toast({
+            title: "Session expired",
+            description: "You have been signed out.",
+            variant: "destructive",
+          });
+          navigate("/police-signin");
+        }
+      },
+    );
+    return () => listener?.unsubscribe();
+  }, [navigate, toast]);
+
+  /* -------- Logout -------- */
   const handleLogout = async () => {
     await supabase.auth.signOut();
     toast({ title: "Signed out", description: "You have been logged out." });
     navigate("/police-signin");
   };
 
+  /* -------- Loading state -------- */
+  if (authState === "loading") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  /* -------- Main UI -------- */
   return (
     <div className="min-h-screen bg-gray-100 p-6 flex flex-col items-center justify-start">
       <Card className="w-full max-w-5xl">
@@ -38,22 +91,11 @@ const PoliceDashboard: React.FC = () => {
           </div>
         </CardHeader>
 
-        {/* Main content – 3‑column layout */}
+        {/* Main content – three column layout */}
         <CardContent className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Map */}
-          <div className="lg:col-span-1">
-            <PoliceMap />
-          </div>
-
-          {/* e‑FIR form */}
-          <div className="lg:col-span-1">
-            <EFIRForm />
-          </div>
-
-          {/* Panic alerts */}
-          <div className="lg:col-span-1">
-            <PanicAlerts />
-          </div>
+          <div className="lg:col-span-1"><PoliceMap /></div>
+          <div className="lg:col-span-1"><EFIRForm /></div>
+          <div className="lg:col-span-1"><PanicAlerts /></div>
         </CardContent>
 
         {/* Footer – logout */}
