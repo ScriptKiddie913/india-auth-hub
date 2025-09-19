@@ -1,7 +1,3 @@
-/* =======================================================
-   Sign-up page – vanilla TS + React
-   ======================================================= */
-
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -19,9 +15,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Palmtree, Mail, Lock, Eye, EyeOff, User } from "lucide-react";
-import { getEthereumAccount, generateUniqueId, registerOnChainAndPersist } from "@/lib/ethereum";
 
-/* --------------------------------------------------- */
+import {
+  getEthereumAccount,
+  generateUniqueId,
+  registerOnChainAndPersist,
+} from "@/lib/ethereum";
+
 const SignUp = () => {
   const [formData, setFormData] = useState({
     fullName: "",
@@ -39,10 +39,7 @@ const SignUp = () => {
   const { toast } = useToast();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData((prev) => ({
-      ...prev,
-      [e.target.name]: e.target.value,
-    }));
+    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
@@ -82,36 +79,32 @@ const SignUp = () => {
     setLoading(true);
 
     try {
-      /* 1) Supabase signup */
-      const { data: supaUser, error: supaError } = await supabase.auth.signUp({
+      // 1️⃣ Supabase signup
+      const { data: user, error: supaError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: { data: { full_name: formData.fullName } },
       });
-      if (supaError) throw new Error(supaError.message);
-      if (!supaUser?.user?.id) throw new Error("Supabase user not returned");
+      if (supaError || !user) throw new Error(supaError?.message || "Sign-up failed");
 
-      const userId = supaUser.user.id;
+      const userId = user.id;
 
-      /* 2) Blockchain registration */
-      const address = await getEthereumAccount();
-      const uniqueId = generateUniqueId(); // now uses random 32-byte hex
-
+      // 2️⃣ Blockchain registration
+      const uniqueId = generateUniqueId();
       const txHash = await registerOnChainAndPersist(uniqueId, userId, toast);
 
-      /* 3) Update user metadata with wallet info */
+      const txLink = `https://sepolia.etherscan.io/tx/${txHash}`;
+
+      // 3️⃣ Update Supabase user with blockchain info
       await supabase.auth.updateUser({
-        data: {
-          wallet_address: address,
-          unique_id: uniqueId,
-          tx_link: `https://sepolia.etherscan.io/tx/${txHash}`,
-        },
+        data: { wallet_address: await getEthereumAccount(), unique_id: uniqueId, tx_link: txLink },
       });
 
       toast({
         title: "Check your email!",
         description: "We've sent you a verification link.",
       });
+
       navigate("/signin");
     } catch (err: any) {
       toast({
@@ -124,7 +117,6 @@ const SignUp = () => {
     }
   };
 
-  /* ---------- JSX --------------------------- */
   return (
     <div
       className="min-h-screen flex items-center justify-center p-4 bg-cover bg-center relative"
