@@ -2,7 +2,7 @@
 import { supabase } from "@/integrations/supabase/client";
 
 /* ---------------- Contract config ---------------- */
-const CONTRACT_ADDRESS = "0x0d0A38A501B2AD98248eD7E17b6025D9a55F5044"; // replace if redeployed
+const CONTRACT_ADDRESS = "0x0d0A38A501B2AD98248eD7E17b6025D9a55F5044";
 // Function selector for register(bytes32)
 const REGISTER_SELECTOR = "0x2f2ff15d";
 
@@ -48,7 +48,7 @@ export async function registerOnChainAndPersist(
 
   const from = await getEthereumAccount();
 
-  // Ensure bytes32 is 32 bytes left-padded
+  // Left-pad uniqueId to 32 bytes
   const calldata = REGISTER_SELECTOR + uniqueIdHex.slice(2).padStart(64, "0");
 
   try {
@@ -65,6 +65,14 @@ export async function registerOnChainAndPersist(
       params: [txParams],
     });
 
+    // Wait for confirmation (optional: using ethers.js could give receipt)
+    if (toast) {
+      toast({
+        title: "Transaction sent",
+        description: `Tx hash: ${txHash.slice(0, 10)}...`,
+      });
+    }
+
     // Persist in Supabase
     if (userId) {
       await supabase.from("registrations").insert({
@@ -72,13 +80,6 @@ export async function registerOnChainAndPersist(
         wallet: from,
         unique_id: uniqueIdHex,
         tx_hash: txHash,
-      });
-    }
-
-    if (toast) {
-      toast({
-        title: "On-chain registration sent",
-        description: `Tx hash: ${txHash.slice(0, 10)}...`,
       });
     }
 
