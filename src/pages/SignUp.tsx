@@ -16,11 +16,22 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Palmtree, Mail, Lock, Eye, EyeOff, User } from "lucide-react";
 
-import {
-  getEthereumAccount,
-  generateUniqueId,
-  registerOnChainAndPersist,
-} from "@/lib/ethereum";
+// Replace with your deployed contract address
+const CONTRACT_ADDRESS = "YOUR_CONTRACT_ADDRESS_HERE";
+
+// Minimal ABI for registration function
+const CONTRACT_ABI = [
+  {
+    inputs: [
+      { internalType: "string", name: "_name", type: "string" },
+      { internalType: "string", name: "_email", type: "string" },
+    ],
+    name: "registerIdentity",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+];
 
 const SignUp = () => {
   const [formData, setFormData] = useState({
@@ -29,7 +40,6 @@ const SignUp = () => {
     password: "",
     confirmPassword: "",
   });
-
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
@@ -86,27 +96,44 @@ const SignUp = () => {
         options: { data: { full_name: formData.fullName } },
       });
       if (supaError || !user) throw new Error(supaError?.message || "Sign-up failed");
-
       const userId = user.id;
 
-      // 2️⃣ Blockchain registration
-      const uniqueId = generateUniqueId();
-      const txHash = await registerOnChainAndPersist(uniqueId, userId, toast);
+      // 2️⃣ Request MetaMask account
+      if (!window.ethereum) throw new Error("MetaMask not detected");
+      const [account] = await window.ethereum.request({ method: "eth_requestAccounts" });
+
+      // 3️⃣ Encode contract call
+      const data = (window as any).web3.eth.abi.encodeFunctionCall(
+        CONTRACT_ABI[0],
+        [formData.fullName, formData.email]
+      );
+
+      // 4️⃣ Send transaction
+      const txHash = await window.ethereum.request({
+        method: "eth_sendTransaction",
+        params: [
+          {
+            from: account,
+            to: CONTRACT_ADDRESS,
+            data,
+          },
+        ],
+      });
 
       const txLink = `https://sepolia.etherscan.io/tx/${txHash}`;
 
-      // 3️⃣ Update Supabase user with blockchain info
+      // 5️⃣ Update Supabase user with blockchain info
       await supabase.auth.updateUser({
         data: {
-          wallet_address: await getEthereumAccount(),
-          unique_id: uniqueId,
+          wallet_address: account,
+          unique_id: `${userId}-${Date.now()}`, // Optional unique ID
           tx_link: txLink,
         },
       });
 
       toast({
-        title: "Check your email!",
-        description: "We've sent you a verification link.",
+        title: "Success!",
+        description: "Account created and registered on blockchain.",
       });
 
       navigate("/signin");
@@ -139,7 +166,7 @@ const SignUp = () => {
         </CardHeader>
         <CardContent className="space-y-6">
           <form onSubmit={handleSignUp} className="space-y-4">
-            {/* Full name */}
+            {/* Full Name */}
             <div className="space-y-2">
               <Label htmlFor="fullName">Full Name</Label>
               <div className="relative">
@@ -236,12 +263,14 @@ const SignUp = () => {
               {loading ? "Creating account…" : "Create Account"}
             </Button>
           </form>
+
           <div className="relative">
             <Separator />
             <div className="absolute inset-0 flex items-center justify-center">
               <span className="bg-white/90 px-4 text-sm">Already have an account?</span>
             </div>
           </div>
+
           <div className="text-center">
             <Link to="/signin" className="text-primary hover:underline">
               Sign in to your account
