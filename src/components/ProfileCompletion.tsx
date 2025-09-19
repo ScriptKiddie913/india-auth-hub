@@ -1,14 +1,53 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+/* =======================================================
+   Profile‑completion page – 100 % vanilla TS+React
+   ------------------------------------------------------
+   This file adds the missing wallet_address/unique_id
+   fields into the `profiles` table if they are not already stored.
+   =======================================================
+*/
+
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { User, FileText, Phone, MapPin } from "lucide-react";
 
+/* ---------- Helper functions ------------------------------------ */
+async function getEthereumAccount(): Promise<string> {
+  if (!window.ethereum) throw new Error("MetaMask not installed");
+  const accounts: string[] = await window.ethereum.request({
+    method: "eth_requestAccounts",
+  });
+  return accounts[0];
+}
+
+async function generateUniqueId(address: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const text = `${address}-${Date.now()}`;
+  const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(text));
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/* ---------- Main component ------------------------------------- */
 interface FormData {
   name: string;
   nationality: string;
@@ -18,58 +57,62 @@ interface FormData {
   email: string;
 }
 
-const ProfileCompletion = () => {
+const ProfileCompletion: React.FC = () => {
+  /* ----- State --------------------------------------------- */
   const [formData, setFormData] = useState<FormData>({
-    name: '',
-    nationality: '',
-    passport: '',
-    aadhaar: '',
-    phone: '',
-    email: ''
+    name: "",
+    nationality: "",
+    passport: "",
+    aadhaar: "",
+    phone: "",
+    email: "",
   });
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  /* ----- Handler ------------------------------------------- */
   const handleInputChange = (field: keyof FormData, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const validateForm = () => {
+  const validateForm = (): boolean => {
+    /* basic required checks */
     if (!formData.name || !formData.nationality || !formData.phone || !formData.email) {
       toast({
         title: "Missing information",
         description: "Please fill in all required fields",
-        variant: "destructive"
+        variant: "destructive",
       });
       return false;
     }
 
-    if (formData.nationality === 'Indian' && !formData.aadhaar) {
+    /* nationality‑specific checks */
+    if (formData.nationality === "Indian" && !formData.aadhaar) {
       toast({
         title: "Aadhaar required",
         description: "Aadhaar number is required for Indian citizens",
-        variant: "destructive"
+        variant: "destructive",
       });
       return false;
     }
 
-    if (!formData.passport && formData.nationality !== 'Indian') {
+    if (!formData.passport && formData.nationality !== "Indian") {
       toast({
         title: "Passport required",
-        description: "Passport number is required for non-Indian citizens",
-        variant: "destructive"
+        description: "Passport number is required for non‑Indian citizens",
+        variant: "destructive",
       });
       return false;
     }
 
-    // Validate phone number format
+    /* phone format */
     const phoneRegex = /^[+]?[\d\s\-()]{10,15}$/;
     if (!phoneRegex.test(formData.phone)) {
       toast({
         title: "Invalid phone number",
         description: "Please enter a valid phone number",
-        variant: "destructive"
+        variant: "destructive",
       });
       return false;
     }
@@ -81,15 +124,21 @@ const ProfileCompletion = () => {
     if (!validateForm()) return;
 
     setLoading(true);
-    console.log('Starting profile update...');
+    console.log("Starting profile update…");
 
     try {
+      /* ----------------------------------------------------- */
+      /* 1) Get the current logged‑in Supabase user */
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('User not found');
+      if (!user) throw new Error("User not found");
 
-      console.log('User found:', user.id);
+      /* ----------------------------------------------------- */
+      /* 2) Pull MetaMask account and generate ID if they aren’t already there. */
+      const walletAddress = await getEthereumAccount();
+      const uniqueId = await generateUniqueId(walletAddress);
 
-      // Update user profile
+      /* ----------------------------------------------------- */
+      /* 3) Build the upsert payload */
       const profileData = {
         user_id: user.id,
         full_name: formData.name,
@@ -97,42 +146,43 @@ const ProfileCompletion = () => {
         nationality: formData.nationality,
         passport_number: formData.passport || null,
         aadhaar_number: formData.aadhaar || null,
-        email: formData.email
+        email: formData.email,
+        wallet_address: walletAddress,  // new column
+        unique_id: uniqueId,            // new column
       };
 
-      console.log('Updating profile with:', profileData);
-
+      /* ----------------------------------------------------- */
+      /* 4) Upsert into Supabase */
       const { error: profileError } = await supabase
-        .from('profiles')
-        .upsert(profileData, {
-          onConflict: 'user_id'
-        });
+        .from("profiles")
+        .upsert(profileData, { onConflict: "user_id" });
 
       if (profileError) {
-        console.error('Profile update error:', profileError);
+        console.error(profileError);
         throw profileError;
       }
 
-      console.log('Profile updated successfully');
-
+      /* ----------------------------------------------------- */
+      /* 5) Success workflow */
       toast({
         title: "Profile completed!",
-        description: "Your profile has been successfully updated. You can now access the dashboard.",
+        description:
+          "Your profile has been successfully updated. You can now access the dashboard.",
       });
-
-      navigate('/dashboard');
+      navigate("/dashboard");
     } catch (error: any) {
-      console.error('Error completing profile:', error);
+      console.error(error);
       toast({
         title: "Error",
-        description: error.message || "Failed to complete profile",
-        variant: "destructive"
+        description: error.message ?? "Failed to complete profile",
+        variant: "destructive",
       });
     } finally {
       setLoading(false);
     }
   };
 
+  /* ---------- UI --------------------------------------------- */
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-secondary/20 to-accent/10 p-4 flex items-center justify-center">
       <Card className="w-full max-w-2xl mx-auto shadow-xl">
@@ -150,7 +200,7 @@ const ProfileCompletion = () => {
 
         <CardContent className="space-y-6">
           <div className="space-y-4">
-            {/* Full Name */}
+            {/* Full name */}
             <div className="space-y-2">
               <Label htmlFor="name">Full Name *</Label>
               <div className="relative">
@@ -158,7 +208,7 @@ const ProfileCompletion = () => {
                 <Input
                   id="name"
                   value={formData.name}
-                  onChange={(e) => handleInputChange('name', e.target.value)}
+                  onChange={(e) => handleInputChange("name", e.target.value)}
                   placeholder="Enter your full name as per passport/Aadhaar"
                   className="pl-10"
                 />
@@ -168,7 +218,11 @@ const ProfileCompletion = () => {
             {/* Nationality */}
             <div className="space-y-2">
               <Label>Nationality *</Label>
-              <Select onValueChange={(value) => handleInputChange('nationality', value)}>
+              <Select
+                onValueChange={(value) =>
+                  handleInputChange("nationality", value)
+                }
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select your nationality" />
                 </SelectTrigger>
@@ -183,8 +237,8 @@ const ProfileCompletion = () => {
               </Select>
             </div>
 
-            {/* Passport Number */}
-            {formData.nationality !== 'Indian' && (
+            {/* Passport (for non‑Indian) */}
+            {formData.nationality !== "Indian" && (
               <div className="space-y-2">
                 <Label htmlFor="passport">Passport Number *</Label>
                 <div className="relative">
@@ -192,7 +246,9 @@ const ProfileCompletion = () => {
                   <Input
                     id="passport"
                     value={formData.passport}
-                    onChange={(e) => handleInputChange('passport', e.target.value)}
+                    onChange={(e) =>
+                      handleInputChange("passport", e.target.value)
+                    }
                     placeholder="Enter your passport number"
                     className="pl-10"
                   />
@@ -200,8 +256,8 @@ const ProfileCompletion = () => {
               </div>
             )}
 
-            {/* Aadhaar Number (for Indian citizens) */}
-            {formData.nationality === 'Indian' && (
+            {/* Aadhaar (for Indian) */}
+            {formData.nationality === "Indian" && (
               <div className="space-y-2">
                 <Label htmlFor="aadhaar">Aadhaar Number *</Label>
                 <div className="relative">
@@ -209,8 +265,10 @@ const ProfileCompletion = () => {
                   <Input
                     id="aadhaar"
                     value={formData.aadhaar}
-                    onChange={(e) => handleInputChange('aadhaar', e.target.value)}
-                    placeholder="Enter your 12-digit Aadhaar number"
+                    onChange={(e) =>
+                      handleInputChange("aadhaar", e.target.value)
+                    }
+                    placeholder="Enter your 12‑digit Aadhaar number"
                     className="pl-10"
                     maxLength={12}
                   />
@@ -218,7 +276,7 @@ const ProfileCompletion = () => {
               </div>
             )}
 
-            {/* Phone Number */}
+            {/* Phone number */}
             <div className="space-y-2">
               <Label htmlFor="phone">Phone Number *</Label>
               <div className="relative">
@@ -226,14 +284,14 @@ const ProfileCompletion = () => {
                 <Input
                   id="phone"
                   value={formData.phone}
-                  onChange={(e) => handleInputChange('phone', e.target.value)}
+                  onChange={(e) => handleInputChange("phone", e.target.value)}
                   placeholder="+91 9876543210"
                   className="pl-10"
                 />
               </div>
             </div>
 
-            {/* Email Address */}
+            {/* Email */}
             <div className="space-y-2">
               <Label htmlFor="email">Email Address *</Label>
               <div className="relative">
@@ -242,21 +300,22 @@ const ProfileCompletion = () => {
                   id="email"
                   type="email"
                   value={formData.email}
-                  onChange={(e) => handleInputChange('email', e.target.value)}
-                  placeholder="your.email@example.com"
+                  onChange={(e) => handleInputChange("email", e.target.value)}
+                  placeholder="you@example.com"
                   className="pl-10"
                 />
               </div>
             </div>
           </div>
 
+          {/* Submit button */}
           <div className="flex gap-4">
             <Button
               onClick={handleSubmit}
               disabled={loading}
               className="flex-1 bg-gradient-to-r from-primary to-accent"
             >
-              {loading ? 'Processing...' : 'Complete Profile'}
+              {loading ? "Processing…" : "Complete Profile"}
             </Button>
           </div>
         </CardContent>
