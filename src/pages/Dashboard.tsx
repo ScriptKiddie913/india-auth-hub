@@ -10,7 +10,16 @@ import {
 } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { User, LogOut, MapPin, Trash2, Navigation, AlertTriangle, HelpCircle, Phone } from "lucide-react";
+import {
+  User,
+  LogOut,
+  MapPin,
+  Trash2,
+  Navigation,
+  AlertTriangle,
+  HelpCircle,
+  Phone,
+} from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import HelpDesk from "@/components/HelpDesk";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
@@ -23,7 +32,12 @@ interface Destination {
 }
 
 // ✅ Haversine formula to calculate distance (in meters)
-const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+const getDistance = (
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+) => {
   const R = 6371e3; // Earth radius in meters
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const φ1 = toRad(lat1);
@@ -59,7 +73,11 @@ const Dashboard = () => {
   // ✅ Geofence state
   const geofenceStatus = useRef<Record<string, boolean>>({});
   const geofenceCircles = useRef<Record<string, any>>({});
-  const GEOFENCE_RADIUS =3000; // meters
+  const GEOFENCE_RADIUS = 3000; // meters
+
+  // MobileShield
+  const [mobileShieldActive, setMobileShieldActive] = useState(false);
+  const shieldCircleRef = useRef<any>(null);
 
   // ✅ Beep sound
   const beepRef = useRef<HTMLAudioElement | null>(null);
@@ -89,20 +107,20 @@ const Dashboard = () => {
       } = await supabase.auth.getUser();
       if (user) {
         setUser(user);
-        
+
         // Check if user has completed profile
         const { data: profile } = await supabase
-          .from('profiles')
-          .select('nationality, phone')
-          .eq('user_id', user.id)
+          .from("profiles")
+          .select("nationality, phone")
+          .eq("user_id", user.id)
           .maybeSingle();
-        
+
         // If user doesn't have nationality or phone, redirect to profile completion
         if (!profile || !profile.nationality || !profile.phone) {
-          navigate('/profile-completion');
+          navigate("/profile-completion");
           return;
         }
-        
+
         await fetchDestinations(user.id);
       } else {
         navigate("/signin");
@@ -124,7 +142,7 @@ const Dashboard = () => {
   useEffect(() => {
     if ("geolocation" in navigator) {
       const watchId = navigator.geolocation.watchPosition(
-        (pos) => {
+        async (pos) => {
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
           setLocation({ lat, lng });
@@ -154,7 +172,7 @@ const Dashboard = () => {
           }
 
           // ✅ Draw geofence circles
-          if (mapInstance.current) {
+          if (mapInstance.current && destinations.length) {
             destinations.forEach((dest) => {
               if (dest.latitude && dest.longitude) {
                 if (!geofenceCircles.current[dest.id]) {
@@ -180,6 +198,25 @@ const Dashboard = () => {
                 delete geofenceCircles.current[id];
               }
             });
+          }
+
+          // ✅ Mobile Shield logic: create/move circle
+          if (mobileShieldActive) {
+            if (!shieldCircleRef.current && mapInstance.current) {
+              shieldCircleRef.current = new (window as any).google.maps.Circle({
+                strokeColor: "#0000ff",
+                strokeOpacity: 0.8,
+                strokeWeight: 2,
+                fillColor: "#0000ff",
+                fillOpacity: 0.2,
+                map: mapInstance.current,
+                center: { lat, lng },
+                radius: GEOFENCE_RADIUS,
+              });
+            } else if (shieldCircleRef.current) {
+              // keep user at centre
+              shieldCircleRef.current.setCenter({ lat, lng });
+            }
           }
 
           // ✅ Check geofences
@@ -220,7 +257,9 @@ const Dashboard = () => {
                   if (beepRef.current) {
                     beepRef.current.currentTime = 0;
                     beepRef.current.play().catch(() => {
-                      console.warn("Autoplay prevented. User interaction required.");
+                      console.warn(
+                        "Autoplay prevented. User interaction required."
+                      );
                     });
                   }
 
@@ -250,18 +289,17 @@ const Dashboard = () => {
       );
       return () => navigator.geolocation.clearWatch(watchId);
     }
-  }, [toast, destinations, user]);
+  }, [toast, destinations, user, mobileShieldActive]);
 
   // ✅ Update user location (replace old location) - called every 15 seconds
-  const updateUserLocation = async (userId: string, latitude: number, longitude: number) => {
+  const updateUserLocation = async (
+    userId: string,
+    latitude: number,
+    longitude: number
+  ) => {
     try {
-      // First, delete any existing location for this user
-      await supabase
-        .from("user_locations")
-        .delete()
-        .eq("user_id", userId);
-      
-      // Then insert the new location
+      await supabase.from("user_locations").delete().eq("user_id", userId);
+
       const { error } = await supabase
         .from("user_locations")
         .insert({
@@ -269,7 +307,7 @@ const Dashboard = () => {
           latitude,
           longitude,
         });
-      
+
       if (error) throw error;
     } catch (error: any) {
       console.error("Error updating location:", error);
@@ -292,7 +330,7 @@ const Dashboard = () => {
   // ✅ Panic Button Handler
   const handlePanicButton = async () => {
     if (!user || !location) return;
-    
+
     try {
       const { error } = await supabase
         .from("panic_alerts")
@@ -303,9 +341,9 @@ const Dashboard = () => {
           longitude: location.lng,
           status: "active",
         });
-      
+
       if (error) throw error;
-      
+
       toast({
         title: "🚨 Panic Alert Sent!",
         description: "Emergency services have been notified of your location.",
@@ -377,7 +415,9 @@ const Dashboard = () => {
     }
     try {
       const res = await fetch(
-        `https://photon.komoot.io/api/?q=${encodeURIComponent(value)}&limit=10`
+        `https://photon.komoot.io/api/?q=${encodeURIComponent(
+          value
+        )}&limit=10`
       );
       const data = await res.json();
       if (data && data.features) {
@@ -399,7 +439,11 @@ const Dashboard = () => {
       const coords = place.geometry.coordinates;
       const { error } = await supabase.from("destinations").insert({
         user_id: user.id,
-        name: place.properties.name || place.properties.city || place.properties.country || "Unnamed Place",
+        name:
+          place.properties.name ||
+          place.properties.city ||
+          place.properties.country ||
+          "Unnamed Place",
         latitude: parseFloat(coords[1]),
         longitude: parseFloat(coords[0]),
       });
@@ -441,6 +485,20 @@ const Dashboard = () => {
         description: error.message,
         variant: "destructive",
       });
+    }
+  };
+
+  // Mobile Shield toggle
+  const toggleMobileShield = () => {
+    const newState = !mobileShieldActive;
+    setMobileShieldActive(newState);
+
+    if (!newState) {
+      // Turning off: remove circle
+      if (shieldCircleRef.current) {
+        shieldCircleRef.current.setMap(null);
+        shieldCircleRef.current = null;
+      }
     }
   };
 
@@ -486,7 +544,7 @@ const Dashboard = () => {
               <Button
                 variant="outline"
                 className="flex items-center space-x-2"
-                onClick={() => navigate('/profile')}
+                onClick={() => navigate("/profile")}
               >
                 <User className="w-4 h-4" />
                 <span>Profile</span>
@@ -505,13 +563,20 @@ const Dashboard = () => {
 
         {/* Main Content */}
         <main className="container mx-auto px-4 py-8">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <Tabs
+            value={activeTab}
+            onValueChange={setActiveTab}
+            className="space-y-6"
+          >
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
               <TabsTrigger value="helpdesk">Help & Support</TabsTrigger>
             </TabsList>
-            
-            <TabsContent value="dashboard" className="space-y-6">
+
+            <TabsContent
+              value="dashboard"
+              className="space-y-6"
+            >
               {/* Welcome */}
               <Card className="bg-gradient-to-r from-primary to-accent text-white border-0 shadow-xl">
                 <CardHeader className="pb-6">
@@ -522,7 +587,7 @@ const Dashboard = () => {
                       </div>
                       <div>
                         <CardTitle className="text-3xl font-bold">
-                          Welcome,{" "}
+                          Welcome,
                           {user.user_metadata?.full_name ||
                             user.email?.split("@")[0]}
                           !
@@ -532,7 +597,7 @@ const Dashboard = () => {
                         </CardDescription>
                       </div>
                     </div>
-                
+
                     <Button
                       onClick={handlePanicButton}
                       variant="destructive"
@@ -546,103 +611,115 @@ const Dashboard = () => {
                 </CardHeader>
               </Card>
 
-            {/* ✅ Real-Time Location Map */}
-            {location && (
+              {/* ✅ Real-Time Location Map */}
+              {location && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-2xl font-bold flex items-center gap-2">
+                      <Navigation className="h-5 w-5 text-primary" />
+                      Your Live Location
+                    </CardTitle>
+                    <CardDescription>
+                      Latitude: {location.lat.toFixed(6)}, Longitude:{" "}
+                      {location.lng.toFixed(6)}
+                    </CardDescription>
+                    {/* ✅ Safe / Unsafe Indicator */}
+                    <div className="mt-2">
+                      {isSafe ? (
+                        <span className="px-3 py-1 rounded-full bg-green-500 text-white font-semibold">
+                          ✅ Safe (Inside Geofence)
+                        </span>
+                      ) : (
+                        <span className="px-3 py-1 rounded-full bg-red-500 text-white font-semibold">
+                          ⚠️ Unsafe (Outside Geofence)
+                        </span>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div ref={mapRef} className="w-full h-64 rounded-lg border" />
+                    {/* Mobile Shield button */}
+                    <div className="mt-4 flex justify-center">
+                      <Button
+                        variant={mobileShieldActive ? "destructive" : "outline"}
+                        onClick={toggleMobileShield}
+                        className="w-48"
+                      >
+                        {mobileShieldActive
+                          ? "Disable Mobile Shield"
+                          : "Enable Mobile Shield"}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* ✅ Destinations Section */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-2xl font-bold flex items-center gap-2">
-                    <Navigation className="h-5 w-5 text-primary" /> Your Live
-                    Location
+                  <CardTitle className="text-2xl font-bold">
+                    Plan Your Destinations
                   </CardTitle>
                   <CardDescription>
-                    Latitude: {location.lat.toFixed(6)}, Longitude:{" "}
-                    {location.lng.toFixed(6)}
+                    Search for locations using Photon API and add them to your
+                    travel list.
                   </CardDescription>
-                  {/* ✅ Safe / Unsafe Indicator */}
-                  <div className="mt-2">
-                    {isSafe ? (
-                      <span className="px-3 py-1 rounded-full bg-green-500 text-white font-semibold">
-                        ✅ Safe (Inside Geofence)
-                      </span>
-                    ) : (
-                      <span className="px-3 py-1 rounded-full bg-red-500 text-white font-semibold">
-                        ⚠️ Unsafe (Outside Geofence)
-                      </span>
-                    )}
-                  </div>
                 </CardHeader>
                 <CardContent>
-                  <div ref={mapRef} className="w-full h-64 rounded-lg border" />
-                </CardContent>
-              </Card>
-            )}
+                  <div className="relative mb-4">
+                    <input
+                      type="text"
+                      value={query}
+                      onChange={(e) => {
+                        setQuery(e.target.value);
+                        debouncedFetchSuggestions(e.target.value);
+                      }}
+                      placeholder="Search for a location..."
+                      className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                    {suggestions.length > 0 && (
+                      <ul className="absolute z-10 bg-white border rounded-md shadow-md w-full mt-1 max-h-60 overflow-auto">
+                        {suggestions.map((place, index) => (
+                          <li
+                            key={index}
+                            className="px-4 py-2 hover:bg-secondary cursor-pointer flex items-center space-x-2"
+                            onClick={() => addDestination(place)}
+                          >
+                            <MapPin className="w-4 h-4 text-primary" />
+                            <span>
+                              {place.properties.name ||
+                                place.properties.city ||
+                                place.properties.country}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
 
-            {/* ✅ Destinations Section */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-2xl font-bold">
-                  Plan Your Destinations
-                </CardTitle>
-                <CardDescription>
-                  Search for locations using Photon API and add them to your
-                  travel list.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="relative mb-4">
-                  <input
-                    type="text"
-                    value={query}
-                    onChange={(e) => {
-                      setQuery(e.target.value);
-                      debouncedFetchSuggestions(e.target.value)
-                    }}
-                    placeholder="Search for a location..."
-                    className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                  />
-                  {suggestions.length > 0 && (
-                    <ul className="absolute z-10 bg-white border rounded-md shadow-md w-full mt-1 max-h-60 overflow-auto">
-                      {suggestions.map((place, index) => (
+                  {destinations.length > 0 && (
+                    <ul className="space-y-2">
+                      {destinations.map((dest) => (
                         <li
-                          key={index}
-                          className="px-4 py-2 hover:bg-secondary cursor-pointer flex items-center space-x-2"
-                          onClick={() => addDestination(place)}
+                          key={dest.id}
+                          className="flex justify-between items-center bg-secondary/20 px-4 py-2 rounded-md"
                         >
-                          <MapPin className="w-4 h-4 text-primary" />
-                          <span>
-                            {place.properties.name ||
-                              place.properties.city ||
-                              place.properties.country}
-                          </span>
+                          <span>{dest.name}</span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeDestination(dest.id)}
+                          >
+                            <Trash2 className="w-4 h-4 text-destructive" />
+                          </Button>
                         </li>
                       ))}
                     </ul>
                   )}
-                </div>
-
-                {destinations.length > 0 && (
-                  <ul className="space-y-2">
-                    {destinations.map((dest) => (
-                      <li
-                        key={dest.id}
-                        className="flex justify-between items-center bg-secondary/20 px-4 py-2 rounded-md"
-                      >
-                        <span>{dest.name}</span>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeDestination(dest.id)}
-                        >
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
             </TabsContent>
-            
+
             <TabsContent value="helpdesk">
               <Card>
                 <CardHeader>
@@ -651,7 +728,8 @@ const Dashboard = () => {
                     Help & Support
                   </CardTitle>
                   <CardDescription>
-                    Get assistance from our support team. You can send messages and images.
+                    Get assistance from our support team. You can send messages
+                    and images.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -667,7 +745,7 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
-          
+
 
 
 
