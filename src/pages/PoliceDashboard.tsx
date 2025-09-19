@@ -1,3 +1,4 @@
+
 // src/pages/PoliceDashboard.tsx
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -27,8 +28,9 @@ const PoliceDashboard: React.FC = () => {
   const navigate = useNavigate();
 
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstance = useRef<any>(null);
-  const markersRef = useRef<any[]>([]);
+  const mapInstance = useRef<google.maps.Map | null>(null);
+  const markersRef = useRef<google.maps.Marker[]>([]);
+  const scriptLoadedRef = useRef(false);
 
   /* ✅ Fetch panic alerts from Supabase */
   useEffect(() => {
@@ -46,16 +48,20 @@ const PoliceDashboard: React.FC = () => {
     };
 
     fetchPanicAlerts();
+
+    // Optionally, poll every 10s for live updates
+    const interval = setInterval(fetchPanicAlerts, 10000);
+    return () => clearInterval(interval);
   }, []);
 
-  /* ✅ Initialize Google Map */
+  /* ✅ Load Google Maps script once */
   useEffect(() => {
     const initMap = () => {
-      if (!mapRef.current || !(window as any).google) return;
+      if (!mapRef.current || mapInstance.current) return;
 
       console.log("✅ Initializing Google Map...");
 
-      mapInstance.current = new (window as any).google.maps.Map(mapRef.current, {
+      mapInstance.current = new google.maps.Map(mapRef.current, {
         center: { lat: 22.5726, lng: 88.3639 }, // Kolkata
         zoom: 12,
       });
@@ -66,34 +72,44 @@ const PoliceDashboard: React.FC = () => {
     };
 
     const scriptId = "google-maps-script";
-    if (!(window as any).google || !(window as any).google.maps) {
-      if (!document.getElementById(scriptId)) {
-        const script = document.createElement("script");
-        script.id = scriptId;
-        script.src =
-          "https://maps.googleapis.com/maps/api/js?key=AIzaSyBU7z2W7aE4T6TSV7SqEk0UJiyjAC97UW8&libraries=places";
-        script.async = true;
-        script.defer = true;
+    if (!scriptLoadedRef.current) {
+      if (!(window as any).google || !(window as any).google.maps) {
+        if (!document.getElementById(scriptId)) {
+          const script = document.createElement("script");
+          script.id = scriptId;
+          script.src =
+            "https://maps.googleapis.com/maps/api/js?key=AIzaSyBU7z2W7aE4T6TSV7SqEk0UJiyjAC97UW8&libraries=places";
+          script.async = true;
+          script.defer = true;
 
-        script.onload = () => {
-          console.log("✅ Google Maps script loaded");
-          initMap();
-        };
+          script.onload = () => {
+            scriptLoadedRef.current = true;
+            console.log("✅ Google Maps script loaded");
+            initMap();
+          };
 
-        script.onerror = () => {
-          console.error("❌ Failed to load Google Maps script");
-        };
+          script.onerror = () => {
+            console.error("❌ Failed to load Google Maps script");
+          };
 
-        document.body.appendChild(script);
+          document.body.appendChild(script);
+        }
       } else {
-        document.getElementById(scriptId)?.addEventListener("load", initMap);
+        scriptLoadedRef.current = true;
+        initMap();
       }
     } else {
       initMap();
     }
   }, [panicAlerts]);
 
-  /* ✅ Update markers on the map */
+  /* ✅ Update markers whenever alerts change */
+  useEffect(() => {
+    if (mapInstance.current && panicAlerts.length > 0) {
+      updateMarkers(panicAlerts);
+    }
+  }, [panicAlerts]);
+
   const updateMarkers = (alerts: PanicAlert[]) => {
     if (!mapInstance.current || !(window as any).google) return;
 
@@ -102,13 +118,13 @@ const PoliceDashboard: React.FC = () => {
     markersRef.current = [];
 
     alerts.forEach((alert) => {
-      const marker = new (window as any).google.maps.Marker({
+      const marker = new google.maps.Marker({
         position: { lat: alert.latitude, lng: alert.longitude },
-        map: mapInstance.current,
+        map: mapInstance.current!,
         title: `Alert ID: ${alert.id}`,
       });
 
-      const infowindow = new (window as any).google.maps.InfoWindow({
+      const infowindow = new google.maps.InfoWindow({
         content: `<div>
           <strong>Alert ID:</strong> ${alert.id}<br/>
           <strong>Status:</strong> ${alert.status}<br/>
@@ -132,7 +148,11 @@ const PoliceDashboard: React.FC = () => {
       .eq("id", id);
 
     if (error) {
-      toast({ title: "Error", description: "Failed to resolve alert", variant: "destructive" });
+      toast({
+        title: "Error",
+        description: "Failed to resolve alert",
+        variant: "destructive",
+      });
     } else {
       setPanicAlerts((prev) =>
         prev.map((alert) =>
