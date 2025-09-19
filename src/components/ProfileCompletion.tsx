@@ -1,8 +1,11 @@
 /* =======================================================
    Profile‑completion page – 100 % vanilla TS+React
    ------------------------------------------------------
-   This file adds the missing wallet_address/unique_id
-   fields into the `profiles` table if they are not already stored.
+   New behaviour:
+   * Pulls MetaMask wallet if not already stored
+   * Generates a unique ID
+   * Persists wallet_address, unique_id, and sends the chain transaction
+   * Stores the tx hash and shows a clickable link to Etherscan
    =======================================================
 */
 
@@ -27,27 +30,12 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { User, FileText, Phone, MapPin } from "lucide-react";
+import {
+  getEthereumAccount,
+  generateUniqueId,
+  registerOnChainAndPersist,
+} from "@/lib/ethereum";
 
-/* ---------- Helper functions ------------------------------------ */
-async function getEthereumAccount(): Promise<string> {
-  if (!window.ethereum) throw new Error("MetaMask not installed");
-  const accounts: string[] = await window.ethereum.request({
-    method: "eth_requestAccounts",
-  });
-  return accounts[0];
-}
-
-async function generateUniqueId(address: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const text = `${address}-${Date.now()}`;
-  const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(text));
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-/* ---------- Main component ------------------------------------- */
 interface FormData {
   name: string;
   nationality: string;
@@ -58,7 +46,6 @@ interface FormData {
 }
 
 const ProfileCompletion: React.FC = () => {
-  /* ----- State --------------------------------------------- */
   const [formData, setFormData] = useState<FormData>({
     name: "",
     nationality: "",
@@ -71,13 +58,11 @@ const ProfileCompletion: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  /* ----- Handler ------------------------------------------- */
   const handleInputChange = (field: keyof FormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   const validateForm = (): boolean => {
-    /* basic required checks */
     if (!formData.name || !formData.nationality || !formData.phone || !formData.email) {
       toast({
         title: "Missing information",
@@ -86,8 +71,6 @@ const ProfileCompletion: React.FC = () => {
       });
       return false;
     }
-
-    /* nationality‑specific checks */
     if (formData.nationality === "Indian" && !formData.aadhaar) {
       toast({
         title: "Aadhaar required",
@@ -96,7 +79,6 @@ const ProfileCompletion: React.FC = () => {
       });
       return false;
     }
-
     if (!formData.passport && formData.nationality !== "Indian") {
       toast({
         title: "Passport required",
@@ -105,8 +87,6 @@ const ProfileCompletion: React.FC = () => {
       });
       return false;
     }
-
-    /* phone format */
     const phoneRegex = /^[+]?[\d\s\-()]{10,15}$/;
     if (!phoneRegex.test(formData.phone)) {
       toast({
@@ -116,7 +96,6 @@ const ProfileCompletion: React.FC = () => {
       });
       return false;
     }
-
     return true;
   };
 
@@ -124,21 +103,16 @@ const ProfileCompletion: React.FC = () => {
     if (!validateForm()) return;
 
     setLoading(true);
-    console.log("Starting profile update…");
-
     try {
-      /* ----------------------------------------------------- */
-      /* 1) Get the current logged‑in Supabase user */
+      /* 1) Current logged‑in Supabase user */
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not found");
 
-      /* ----------------------------------------------------- */
-      /* 2) Pull MetaMask account and generate ID if they aren’t already there. */
+      /* 2) Get MetaMask address + unique ID if missing in profile */
       const walletAddress = await getEthereumAccount();
       const uniqueId = await generateUniqueId(walletAddress);
 
-      /* ----------------------------------------------------- */
-      /* 3) Build the upsert payload */
+      /* 3) Build the profile payload (including wallet & id) */
       const profileData = {
         user_id: user.id,
         full_name: formData.name,
@@ -147,12 +121,11 @@ const ProfileCompletion: React.FC = () => {
         passport_number: formData.passport || null,
         aadhaar_number: formData.aadhaar || null,
         email: formData.email,
-        wallet_address: walletAddress,  // new column
-        unique_id: uniqueId,            // new column
+        wallet_address: walletAddress,
+        unique_id: uniqueId,
       };
 
-      /* ----------------------------------------------------- */
-      /* 4) Upsert into Supabase */
+      /* 4) Upsert into the profiles table */
       const { error: profileError } = await supabase
         .from("profiles")
         .upsert(profileData, { onConflict: "user_id" });
@@ -162,8 +135,10 @@ const ProfileCompletion: React.FC = () => {
         throw profileError;
       }
 
-      /* ----------------------------------------------------- */
-      /* 5) Success workflow */
+      /* 5) Send the chain transaction and persist the tx hash */
+      await registerOnChainAndPersist(uniqueId, user.id, toast);
+
+      /* 6) Success UI */
       toast({
         title: "Profile completed!",
         description:
@@ -182,7 +157,6 @@ const ProfileCompletion: React.FC = () => {
     }
   };
 
-  /* ---------- UI --------------------------------------------- */
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-secondary/20 to-accent/10 p-4 flex items-center justify-center">
       <Card className="w-full max-w-2xl mx-auto shadow-xl">
@@ -219,9 +193,7 @@ const ProfileCompletion: React.FC = () => {
             <div className="space-y-2">
               <Label>Nationality *</Label>
               <Select
-                onValueChange={(value) =>
-                  handleInputChange("nationality", value)
-                }
+                onValueChange={(value) => handleInputChange("nationality", value)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select your nationality" />
@@ -237,7 +209,7 @@ const ProfileCompletion: React.FC = () => {
               </Select>
             </div>
 
-            {/* Passport (for non‑Indian) */}
+            {/* Passport (non‑Indian) */}
             {formData.nationality !== "Indian" && (
               <div className="space-y-2">
                 <Label htmlFor="passport">Passport Number *</Label>
@@ -256,7 +228,7 @@ const ProfileCompletion: React.FC = () => {
               </div>
             )}
 
-            {/* Aadhaar (for Indian) */}
+            {/* Aadhaar (Indian) */}
             {formData.nationality === "Indian" && (
               <div className="space-y-2">
                 <Label htmlFor="aadhaar">Aadhaar Number *</Label>
