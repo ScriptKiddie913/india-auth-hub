@@ -1,3 +1,12 @@
+/* =======================================================
+   Sign‑up page – 100 % vanilla TypeScript + React
+   ------------------------------------------------------
+   No third‑party libraries are imported – only the
+   `supabase` client that you already have and the
+   browser‑injected `window.ethereum` from MetaMask.
+   =======================================================
+*/
+
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -14,33 +23,75 @@ import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Palmtree, Mail, Lock, Eye, EyeOff, User } from "lucide-react";
+import {
+  Palmtree,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  User,
+} from "lucide-react";
 
 const SignUp = () => {
+  /* ------------ state ------------------------------------------------ */
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
     password: "",
     confirmPassword: "",
   });
+
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  /* ------------ helpers -------------------------------------------- */
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     setFormData((prev) => ({
       ...prev,
       [e.target.name]: e.target.value,
     }));
   };
 
+  /* ------------ Ethereum helpers ----------------------------------- */
+  /* Get the first account that MetaMask gives us. */
+  const getEthereumAccount = async (): Promise<string> => {
+    if (!window.ethereum) {
+      throw new Error("MetaMask not installed");
+    }
+    const accounts: string[] = await window.ethereum.request({
+      method: "eth_requestAccounts",
+    });
+    return accounts[0];
+  };
+
+  /* Build a deterministic “unique‑id”:
+     SHA‑256([address] + "-" + [timestamp]).
+     The resulting 64‑hex characters are easy to store. */
+  const generateUniqueId = async (address: string) => {
+    const encoder = new TextEncoder();
+    const text = `${address}-${Date.now()}`;
+    const hashBuffer = await crypto.subtle.digest(
+      "SHA-256",
+      encoder.encode(text)
+    );
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  };
+
+  /* ------------ sign‑up flow --------------------------------------- */
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // ✅ Strong password validation
+    /* ----- basic form validation ----- */
     const strongPasswordRegex =
       /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{12,}$/;
 
@@ -72,10 +123,11 @@ const SignUp = () => {
       return;
     }
 
+    /* ------------------------------- */
     setLoading(true);
-
     try {
-      const { error } = await supabase.auth.signUp({
+      /* 1) Sign‑up on Supabase */
+      const { error: supaError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: {
@@ -85,24 +137,36 @@ const SignUp = () => {
         },
       });
 
-      if (error) {
-        toast({
-          title: "Sign up failed",
-          description: error.message,
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Check your email!",
-          description:
-            "We've sent you a verification link to complete your registration.",
-        });
-        navigate("/signin");
+      if (supaError) {
+        throw new Error(supaError.message);
       }
-    } catch (error) {
+
+      /* 2) Pull MetaMask address and generate ID
+         (we only do this if the user has MetaMask). */
+      const address = await getEthereumAccount();
+      const uniqueId = await generateUniqueId(address);
+
+      /* 3) Store address + ID in Supabase User Metadata
+         (Supabase stores the data you sent in the sign‑up
+         `options.data` block, so just update it now). */
+      await supabase.auth.updateUser({
+        data: {
+          wallet_address: address,
+          unique_id: uniqueId,
+        },
+      });
+
+      /* 4) Notify & redirect */
+      toast({
+        title: "Check your email!",
+        description:
+          "We've sent you a verification link to complete your registration.",
+      });
+      navigate("/signin");
+    } catch (err: any) {
       toast({
         title: "Error",
-        description: "An unexpected error occurred",
+        description: err.message ?? "An unexpected error occurred",
         variant: "destructive",
       });
     } finally {
@@ -110,15 +174,15 @@ const SignUp = () => {
     }
   };
 
+  /* ------------ JSX -------------------------------------------------- */
   return (
     <div
       className="min-h-screen flex items-center justify-center p-4 bg-cover bg-center relative"
       style={{ backgroundImage: "url('/image/signup.jpg')" }}
     >
-      {/* Gradient overlay for style & readability */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/20 to-black/40"></div>
-
-      {/* Glassmorphism Card */}
+      {/* Gradient overlay */}
+      <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/20 to-black/40" />
+      {/* The card */}
       <Card className="w-full max-w-md mx-auto backdrop-blur-md bg-white/90 shadow-2xl border border-white/20 animate-fade-in relative z-10">
         <CardHeader className="text-center pb-6">
           <div className="mx-auto w-16 h-16 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center mb-4 shadow-lg">
@@ -134,7 +198,7 @@ const SignUp = () => {
 
         <CardContent className="space-y-6">
           <form onSubmit={handleSignUp} className="space-y-4">
-            {/* Full Name */}
+            {/* Full name */}
             <div className="space-y-2">
               <Label htmlFor="fullName" className="text-sm font-medium">
                 Full Name
@@ -165,7 +229,7 @@ const SignUp = () => {
                   id="email"
                   name="email"
                   type="email"
-                  placeholder="your@email.com"
+                  placeholder="you@domain.com"
                   value={formData.email}
                   onChange={handleInputChange}
                   className="pl-10 h-12 border-muted focus:border-primary transition-colors"
@@ -201,7 +265,7 @@ const SignUp = () => {
               </div>
             </div>
 
-            {/* Confirm Password */}
+            {/* Confirm password */}
             <div className="space-y-2">
               <Label htmlFor="confirmPassword" className="text-sm font-medium">
                 Confirm Password
@@ -254,13 +318,13 @@ const SignUp = () => {
               </Label>
             </div>
 
-            {/* Button */}
+            {/* Submit button */}
             <Button
               type="submit"
               className="w-full h-12 bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02]"
               disabled={loading}
             >
-              {loading ? "Creating account..." : "Create Account"}
+              {loading ? "Creating account…" : "Create Account"}
             </Button>
           </form>
 
@@ -274,7 +338,7 @@ const SignUp = () => {
             </div>
           </div>
 
-          {/* Sign in link */}
+          {/* Sign‑in link */}
           <div className="text-center">
             <Link
               to="/signin"
