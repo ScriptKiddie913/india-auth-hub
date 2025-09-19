@@ -34,7 +34,7 @@ const PoliceDashboard: React.FC = () => {
   const mapInstance = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
 
-  /* ✅ Fetch panic alerts from Supabase */
+  /* ✅ Fetch panic alerts */
   const fetchPanicAlerts = async () => {
     const { data, error } = await supabase
       .from("panic_alerts")
@@ -50,13 +50,16 @@ const PoliceDashboard: React.FC = () => {
 
   useEffect(() => {
     fetchPanicAlerts();
+    const interval = setInterval(fetchPanicAlerts, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   /* ✅ Initialize Google Map */
   useEffect(() => {
     const initMap = () => {
-      if (!mapRef.current || !(window as any).google) return;
+      if (!mapRef.current || mapInstance.current) return;
 
+      console.log("✅ Initializing Google Map...");
       mapInstance.current = new (window as any).google.maps.Map(mapRef.current, {
         center: { lat: 22.5726, lng: 88.3639 }, // Kolkata
         zoom: 12,
@@ -93,6 +96,13 @@ const PoliceDashboard: React.FC = () => {
     } else {
       initMap();
     }
+  }, []);
+
+  /* ✅ Update markers whenever alerts change */
+  useEffect(() => {
+    if (mapInstance.current && panicAlerts.length > 0) {
+      updateMarkers(panicAlerts);
+    }
   }, [panicAlerts]);
 
   /* ✅ Update markers on the map */
@@ -110,7 +120,16 @@ const PoliceDashboard: React.FC = () => {
         title: `Alert ID: ${alert.id}`,
       });
 
+      const infowindow = new (window as any).google.maps.InfoWindow({
+        content: `<div>
+          <strong>Alert ID:</strong> ${alert.id}<br/>
+          <strong>Status:</strong> ${alert.status}<br/>
+          <strong>Time:</strong> ${new Date(alert.created_at).toLocaleString()}
+        </div>`,
+      });
+
       marker.addListener("click", () => {
+        infowindow.open(mapInstance.current, marker);
         setSelectedAlert(alert);
       });
 
@@ -118,7 +137,7 @@ const PoliceDashboard: React.FC = () => {
     });
   };
 
-  /* ✅ Handle resolve alert */
+  /* ✅ Resolve alert */
   const handleResolve = async (id: string) => {
     const { error } = await supabase
       .from("panic_alerts")
@@ -141,19 +160,20 @@ const PoliceDashboard: React.FC = () => {
     }
   };
 
-  /* ✅ Handle logout */
+  /* ✅ Logout */
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate("/police-signin");
   };
 
-  /* ✅ Filtered alerts */
+  /* ✅ Filters + Stats */
   const filteredAlerts =
     filter === "all"
       ? panicAlerts
-      : panicAlerts.filter((a) => a.status === filter);
+      : panicAlerts.filter((a) =>
+          filter === "resolved" ? a.status === "resolved" : a.status !== "resolved"
+        );
 
-  /* ✅ Stats */
   const activeCount = panicAlerts.filter((a) => a.status !== "resolved").length;
   const resolvedCount = panicAlerts.filter((a) => a.status === "resolved").length;
 
@@ -194,7 +214,7 @@ const PoliceDashboard: React.FC = () => {
         </Card>
       </div>
 
-      {/* Map + Alerts Split Layout */}
+      {/* Map + Alerts */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Map */}
         <Card>
