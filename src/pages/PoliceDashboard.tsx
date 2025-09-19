@@ -1,3 +1,4 @@
+// src/pages/PoliceDashboard.tsx
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -10,8 +11,6 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 
 interface PanicAlert {
   id: string;
@@ -22,13 +21,8 @@ interface PanicAlert {
   created_at: string;
 }
 
-const GOOGLE_MAPS_API_KEY = "AIzaSyBU7z2W7aE4T6TSV7SqEk0UJiyjAC97UW8";
-
 const PoliceDashboard: React.FC = () => {
   const [panicAlerts, setPanicAlerts] = useState<PanicAlert[]>([]);
-  const [filter, setFilter] = useState<"all" | "active" | "resolved">("all");
-  const [selectedAlert, setSelectedAlert] = useState<PanicAlert | null>(null);
-
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -37,36 +31,38 @@ const PoliceDashboard: React.FC = () => {
   const markersRef = useRef<any[]>([]);
 
   /* ✅ Fetch panic alerts from Supabase */
-  const fetchPanicAlerts = async () => {
-    const { data, error } = await supabase
-      .from("panic_alerts")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("Error fetching alerts:", error);
-    } else {
-      setPanicAlerts(data || []);
-    }
-  };
-
   useEffect(() => {
+    const fetchPanicAlerts = async () => {
+      const { data, error } = await supabase
+        .from("panic_alerts")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Error fetching alerts:", error);
+      } else {
+        setPanicAlerts(data || []);
+      }
+    };
+
     fetchPanicAlerts();
-    const interval = setInterval(fetchPanicAlerts, 10000);
-    return () => clearInterval(interval);
   }, []);
 
-  /* ✅ Load Google Maps script */
+  /* ✅ Initialize Google Map */
   useEffect(() => {
     const initMap = () => {
-      if (!mapRef.current || mapInstance.current) return;
+      if (!mapRef.current || !(window as any).google) return;
+
+      console.log("✅ Initializing Google Map...");
 
       mapInstance.current = new (window as any).google.maps.Map(mapRef.current, {
         center: { lat: 22.5726, lng: 88.3639 }, // Kolkata
         zoom: 12,
       });
 
-      updateMarkers(panicAlerts);
+      if (panicAlerts.length > 0) {
+        updateMarkers(panicAlerts);
+      }
     };
 
     const scriptId = "google-maps-script";
@@ -74,32 +70,35 @@ const PoliceDashboard: React.FC = () => {
       if (!document.getElementById(scriptId)) {
         const script = document.createElement("script");
         script.id = scriptId;
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places`;
+        script.src =
+          "https://maps.googleapis.com/maps/api/js?key=AIzaSyBU7z2W7aE4T6TSV7SqEk0UJiyjAC97UW8&libraries=places";
         script.async = true;
         script.defer = true;
 
-        script.onload = initMap;
+        script.onload = () => {
+          console.log("✅ Google Maps script loaded");
+          initMap();
+        };
+
         script.onerror = () => {
-          toast({
-            title: "Google Maps Error",
-            description: "Failed to load map. Check API key restrictions.",
-            variant: "destructive",
-          });
+          console.error("❌ Failed to load Google Maps script");
         };
 
         document.body.appendChild(script);
+      } else {
+        document.getElementById(scriptId)?.addEventListener("load", initMap);
       }
     } else {
       initMap();
     }
   }, [panicAlerts]);
 
-  /* ✅ Update markers */
+  /* ✅ Update markers on the map */
   const updateMarkers = (alerts: PanicAlert[]) => {
     if (!mapInstance.current || !(window as any).google) return;
 
     // Clear old markers
-    markersRef.current.forEach((m) => m.setMap(null));
+    markersRef.current.forEach((marker) => marker.setMap(null));
     markersRef.current = [];
 
     alerts.forEach((alert) => {
@@ -107,18 +106,25 @@ const PoliceDashboard: React.FC = () => {
         position: { lat: alert.latitude, lng: alert.longitude },
         map: mapInstance.current,
         title: `Alert ID: ${alert.id}`,
-        icon:
-          alert.status === "resolved"
-            ? "http://maps.google.com/mapfiles/ms/icons/green-dot.png"
-            : "http://maps.google.com/mapfiles/ms/icons/red-dot.png",
       });
 
-      marker.addListener("click", () => setSelectedAlert(alert));
+      const infowindow = new (window as any).google.maps.InfoWindow({
+        content: `<div>
+          <strong>Alert ID:</strong> ${alert.id}<br/>
+          <strong>Status:</strong> ${alert.status}<br/>
+          <strong>Time:</strong> ${new Date(alert.created_at).toLocaleString()}
+        </div>`,
+      });
+
+      marker.addListener("click", () => {
+        infowindow.open(mapInstance.current, marker);
+      });
+
       markersRef.current.push(marker);
     });
   };
 
-  /* ✅ Resolve alert */
+  /* ✅ Handle resolve alert */
   const handleResolve = async (id: string) => {
     const { error } = await supabase
       .from("panic_alerts")
@@ -129,28 +135,22 @@ const PoliceDashboard: React.FC = () => {
       toast({ title: "Error", description: "Failed to resolve alert", variant: "destructive" });
     } else {
       setPanicAlerts((prev) =>
-        prev.map((a) => (a.id === id ? { ...a, status: "resolved" } : a))
+        prev.map((alert) =>
+          alert.id === id ? { ...alert, status: "resolved" } : alert
+        )
       );
-      toast({ title: "✅ Success", description: "Alert marked as resolved" });
+      toast({ title: "Success", description: "Alert marked as resolved" });
     }
   };
 
-  /* ✅ Logout */
+  /* ✅ Handle logout */
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate("/police-signin");
   };
 
-  /* ✅ Filters & Stats */
-  const filteredAlerts =
-    filter === "all" ? panicAlerts : panicAlerts.filter((a) => a.status === filter);
-
-  const activeCount = panicAlerts.filter((a) => a.status !== "resolved").length;
-  const resolvedCount = panicAlerts.filter((a) => a.status === "resolved").length;
-
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Police Dashboard</h1>
         <Button onClick={handleLogout} variant="destructive">
@@ -158,120 +158,56 @@ const PoliceDashboard: React.FC = () => {
         </Button>
       </div>
 
-      {/* Stats Summary */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4 text-center">
-            <p className="text-lg font-bold">{panicAlerts.length}</p>
-            <p>Total Alerts</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <p className="text-lg font-bold">{activeCount}</p>
-            <p>Active</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <p className="text-lg font-bold">{resolvedCount}</p>
-            <p>Resolved</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <Button onClick={fetchPanicAlerts}>Refresh</Button>
-          </CardContent>
-        </Card>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Live Panic Alerts Map</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div
+            ref={mapRef}
+            style={{ width: "100%", height: "400px" }}
+            className="rounded-lg shadow-md border"
+          />
+        </CardContent>
+      </Card>
 
-      {/* Map + Alerts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Map */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Live Panic Alerts Map</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div
-              ref={mapRef}
-              style={{ width: "100%", height: "400px" }}
-              className="rounded-lg shadow-md border"
-            />
-          </CardContent>
-        </Card>
-
-        {/* Alerts List */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Panic Alerts</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Tabs defaultValue="all" onValueChange={(v: any) => setFilter(v)}>
-              <TabsList className="mb-4">
-                <TabsTrigger value="all">All</TabsTrigger>
-                <TabsTrigger value="active">Active</TabsTrigger>
-                <TabsTrigger value="resolved">Resolved</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value={filter}>
-                {filteredAlerts.length === 0 ? (
-                  <p>No alerts</p>
-                ) : (
-                  <ul className="space-y-3">
-                    {filteredAlerts.map((alert) => (
-                      <li
-                        key={alert.id}
-                        className="p-3 border rounded-lg shadow cursor-pointer flex justify-between items-center hover:bg-gray-50"
-                        onClick={() => setSelectedAlert(alert)}
-                      >
-                        <div>
-                          <p><strong>ID:</strong> {alert.id}</p>
-                          <p><strong>Status:</strong> {alert.status}</p>
-                          <p><strong>Time:</strong> {new Date(alert.created_at).toLocaleString()}</p>
-                        </div>
-                        {alert.status !== "resolved" && (
-                          <Button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleResolve(alert.id);
-                            }}
-                          >
-                            Resolve
-                          </Button>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </TabsContent>
-            </Tabs>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Drawer for Alert Details */}
-      {selectedAlert && (
-        <Drawer open={!!selectedAlert} onOpenChange={() => setSelectedAlert(null)}>
-          <DrawerContent>
-            <DrawerHeader>
-              <DrawerTitle>Alert Details</DrawerTitle>
-            </DrawerHeader>
-            <div className="p-4 space-y-2">
-              <p><strong>ID:</strong> {selectedAlert.id}</p>
-              <p><strong>User:</strong> {selectedAlert.user_id}</p>
-              <p><strong>Status:</strong> {selectedAlert.status}</p>
-              <p><strong>Location:</strong> {selectedAlert.latitude}, {selectedAlert.longitude}</p>
-              <p><strong>Created At:</strong> {new Date(selectedAlert.created_at).toLocaleString()}</p>
-              {selectedAlert.status !== "resolved" && (
-                <Button onClick={() => handleResolve(selectedAlert.id)}>
-                  Mark as Resolved
-                </Button>
-              )}
-            </div>
-          </DrawerContent>
-        </Drawer>
-      )}
+      <Card>
+        <CardHeader>
+          <CardTitle>Panic Alerts List</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {panicAlerts.length === 0 ? (
+            <p>No active panic alerts</p>
+          ) : (
+            <ul className="space-y-3">
+              {panicAlerts.map((alert) => (
+                <li
+                  key={alert.id}
+                  className="p-3 border rounded-lg shadow flex justify-between items-center"
+                >
+                  <div>
+                    <p>
+                      <strong>ID:</strong> {alert.id}
+                    </p>
+                    <p>
+                      <strong>Status:</strong> {alert.status}
+                    </p>
+                    <p>
+                      <strong>Time:</strong>{" "}
+                      {new Date(alert.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                  {alert.status !== "resolved" && (
+                    <Button onClick={() => handleResolve(alert.id)}>
+                      Mark as Resolved
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };
