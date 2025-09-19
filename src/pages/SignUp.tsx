@@ -19,32 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Palmtree, Mail, Lock, Eye, EyeOff, User } from "lucide-react";
-
-/* ---------- Blockchain helpers --------------------- */
-const CONTRACT_ADDRESS = "0x0d0A38A501B2AD98248eD7E17b6025D9a55F5044";
-const CONTRACT_ABI = [
-  "function register(bytes32 uniqueId) external",
-  "event Registered(address indexed wallet, bytes32 indexed uniqueId)",
-];
-
-async function getEthereumAccount(): Promise<string> {
-  if (!window.ethereum) throw new Error("MetaMask not installed");
-  const accounts: string[] = await window.ethereum.request({
-    method: "eth_requestAccounts",
-  });
-  return accounts[0];
-}
-
-async function generateUniqueId(address: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const text = `${address}-${Date.now()}`;
-  const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(text));
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return (
-    "0x" +
-    hashArray.map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 64)
-  );
-}
+import { getEthereumAccount, generateUniqueId, registerOnChainAndPersist } from "@/lib/ethereum";
 
 /* --------------------------------------------------- */
 const SignUp = () => {
@@ -108,36 +83,28 @@ const SignUp = () => {
 
     try {
       /* 1) Supabase signup */
-      const { error: supaError } = await supabase.auth.signUp({
+      const { data: supaUser, error: supaError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: { data: { full_name: formData.fullName } },
       });
       if (supaError) throw new Error(supaError.message);
+      if (!supaUser?.user?.id) throw new Error("Supabase user not returned");
+
+      const userId = supaUser.user.id;
 
       /* 2) Blockchain registration */
       const address = await getEthereumAccount();
-      const uniqueId = await generateUniqueId(address);
+      const uniqueId = generateUniqueId(); // now uses random 32-byte hex
 
-      const provider = new (window as any).ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      const contract = new (window as any).ethers.Contract(
-        CONTRACT_ADDRESS,
-        CONTRACT_ABI,
-        signer
-      );
+      const txHash = await registerOnChainAndPersist(uniqueId, userId, toast);
 
-      const tx = await contract.register(uniqueId);
-      const receipt = await tx.wait();
-
-      const txLink = `https://sepolia.etherscan.io/tx/${tx.hash}`;
-
-      /* 3) Store blockchain data in Supabase */
+      /* 3) Update user metadata with wallet info */
       await supabase.auth.updateUser({
         data: {
           wallet_address: address,
           unique_id: uniqueId,
-          tx_link: txLink,
+          tx_link: `https://sepolia.etherscan.io/tx/${txHash}`,
         },
       });
 
