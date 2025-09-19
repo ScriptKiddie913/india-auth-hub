@@ -1,11 +1,9 @@
 // src/lib/ethereum.ts
 import { REGISTRY_ADDRESS, SEPOLIA_EXPLORER_TX } from "./constants";
 import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
 
-/**
- * 1️⃣ Returns the first address that MetaMask gives us
- */
+/* ------------------------------------------------------------------ */
+/* 1️⃣  Get the first MetaMask account                                */
 export async function getEthereumAccount(): Promise<string> {
   if (!window.ethereum) throw new Error("MetaMask not installed");
   const accounts: string[] = await window.ethereum.request({
@@ -14,9 +12,8 @@ export async function getEthereumAccount(): Promise<string> {
   return accounts[0];
 }
 
-/**
- * 2️⃣ Create a deterministic 64‑hex ID: SHA‑256([addr]-[ts])
- */
+/* ------------------------------------------------------------------ */
+/* 2️⃣  Build a deterministic 64‑hex ID                               */
 export async function generateUniqueId(address: string): Promise<string> {
   const encoder = new TextEncoder();
   const text = `${address}-${Date.now()}`;
@@ -25,35 +22,31 @@ export async function generateUniqueId(address: string): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/**
- * 3️⃣ ABI‑encode the calldata for `register(string calldata uniqueId)`
- *     *NO* external libraries – pure JavaScript.
- */
+/* ------------------------------------------------------------------ */
+/* 3️⃣  ABI‑encode calldata for `register(string calldata uniqueId)` */
 function encodeRegisterUniqueId(uniqueId: string): string {
-  // selector for function register(string)
+  //  selector for register(string)
   const selector = "b63a0b30";
 
-  // offset to the start of the string data – always 32 (0x20)
+  // offset to the string data = 32 bytes = 0x20
   const offset = "0000000000000000000000000000000000000000000000000000000000000020";
 
-  // encode the string itself
+  // Encode the string itself
   const encoder = new TextEncoder();
   const bytes = encoder.encode(uniqueId);
   const lenHex = bytes.length.toString(16).padStart(64, "0");
 
-  // pad the string bytes to a multiple of 32 bytes
+  // Pad the string bytes to 32‑byte alignment
   let dataHex = "";
   for (const b of bytes) dataHex += b.toString(16).padStart(2, "0");
   dataHex = dataHex.padEnd(64, "0");
 
-  // final calldata = selector + offset + len + data
+  // Final calldata
   return selector + offset + lenHex + dataHex;
 }
 
-/**
- * 4️⃣ Send the transaction that calls the Registry contract,
- *     then persist the tx hash in the user’s profile row
- */
+/* ------------------------------------------------------------------ */
+/* 4️⃣  Send the transaction *and* persist the tx hash in Supabase     */
 export async function registerOnChainAndPersist(
   uniqueId: string,
   userId: string,
@@ -64,7 +57,6 @@ export async function registerOnChainAndPersist(
   const address = await getEthereumAccount();
   const calldata = encodeRegisterUniqueId(uniqueId);
 
-  // Send the transaction to the contract
   const txHash: string = await window.ethereum.request({
     method: "eth_sendTransaction",
     params: [
@@ -76,7 +68,7 @@ export async function registerOnChainAndPersist(
     ],
   });
 
-  // Persist the hash so you can later look it up
+  // Persist tx hash to the profile row
   const { error } = await supabase
     .from("profiles")
     .update({ registration_tx: txHash })
@@ -84,14 +76,10 @@ export async function registerOnChainAndPersist(
 
   if (error) throw error;
 
-  // Tell the user how to view the block
+  // Notify user (plain string – no JSX)
   toast({
     title: "Transaction submitted",
-    description: (
-      <span>
-        View it on <a href={`${SEPOLIA_EXPLORER_TX}${txHash}`} target="_blank" rel="noreferrer">Etherscan</a>
-      </span>
-    ),
+    description: `View it on Etherscan: ${SEPOLIA_EXPLORER_TX}${txHash}`,
   });
 
   return txHash;
