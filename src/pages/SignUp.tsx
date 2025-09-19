@@ -16,22 +16,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Palmtree, Mail, Lock, Eye, EyeOff, User } from "lucide-react";
 
-// Replace with your deployed contract address
-const CONTRACT_ADDRESS = "YOUR_CONTRACT_ADDRESS_HERE";
-
-// Minimal ABI for registration function
-const CONTRACT_ABI = [
-  {
-    inputs: [
-      { internalType: "string", name: "_name", type: "string" },
-      { internalType: "string", name: "_email", type: "string" },
-    ],
-    name: "registerIdentity",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-];
+// 🔗 Import blockchain helpers
+import {
+  getEthereumAccount,
+  generateUniqueId,
+  registerOnChainAndPersist,
+} from "@/lib/ethereum";
 
 const SignUp = () => {
   const [formData, setFormData] = useState({
@@ -99,26 +89,17 @@ const SignUp = () => {
       const userId = user.id;
 
       // 2️⃣ Request MetaMask account
-      if (!window.ethereum) throw new Error("MetaMask not detected");
-      const [account] = await window.ethereum.request({ method: "eth_requestAccounts" });
+      const account = await getEthereumAccount();
 
-      // 3️⃣ Encode contract call
-      const data = (window as any).web3.eth.abi.encodeFunctionCall(
-        CONTRACT_ABI[0],
-        [formData.fullName, formData.email]
+      // 3️⃣ Generate unique ID (optional, for Supabase linkage)
+      const uniqueId = generateUniqueId();
+
+      // 4️⃣ Call smart contract to persist identity
+      const txHash = await registerOnChainAndPersist(
+        uniqueId,
+        userId,
+        toast
       );
-
-      // 4️⃣ Send transaction
-      const txHash = await window.ethereum.request({
-        method: "eth_sendTransaction",
-        params: [
-          {
-            from: account,
-            to: CONTRACT_ADDRESS,
-            data,
-          },
-        ],
-      });
 
       const txLink = `https://sepolia.etherscan.io/tx/${txHash}`;
 
@@ -126,7 +107,7 @@ const SignUp = () => {
       await supabase.auth.updateUser({
         data: {
           wallet_address: account,
-          unique_id: `${userId}-${Date.now()}`, // Optional unique ID
+          unique_id: uniqueId,
           tx_link: txLink,
         },
       });
@@ -240,7 +221,9 @@ const SignUp = () => {
                 />
                 <button
                   type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  onClick={() =>
+                    setShowConfirmPassword(!showConfirmPassword)
+                  }
                   className="absolute right-3 top-3 h-4 w-4"
                 >
                   {showConfirmPassword ? <EyeOff /> : <Eye />}
@@ -253,7 +236,9 @@ const SignUp = () => {
               <Checkbox
                 id="terms"
                 checked={acceptTerms}
-                onCheckedChange={(checked) => setAcceptTerms(checked as boolean)}
+                onCheckedChange={(checked) =>
+                  setAcceptTerms(checked as boolean)
+                }
               />
               <Label htmlFor="terms">I accept the Terms & Privacy</Label>
             </div>
@@ -267,7 +252,9 @@ const SignUp = () => {
           <div className="relative">
             <Separator />
             <div className="absolute inset-0 flex items-center justify-center">
-              <span className="bg-white/90 px-4 text-sm">Already have an account?</span>
+              <span className="bg-white/90 px-4 text-sm">
+                Already have an account?
+              </span>
             </div>
           </div>
 
