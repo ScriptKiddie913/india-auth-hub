@@ -1,10 +1,13 @@
 // src/lib/ethereum.ts
 import { supabase } from "@/integrations/supabase/client";
+import { ethers } from "ethers";
 
 /* ---------------- Contract config ---------------- */
 const CONTRACT_ADDRESS = "0x0d0A38A501B2AD98248eD7E17b6025D9a55F5044";
-// Function selector for register(bytes32)
-const REGISTER_SELECTOR = "0x2f2ff15d";
+const CONTRACT_ABI = [
+  "function register(bytes32 uniqueId) external",
+  "event Registered(address indexed wallet, bytes32 indexed uniqueId)",
+];
 
 /* ---------------- Ethereum helpers ---------------- */
 
@@ -46,30 +49,26 @@ export async function registerOnChainAndPersist(
 ): Promise<string> {
   if (!(window as any).ethereum) throw new Error("MetaMask not found");
 
-  const from = await getEthereumAccount();
+  const provider = new ethers.providers.Web3Provider(window.ethereum);
+  const signer = provider.getSigner();
+  const from = await signer.getAddress();
 
-  // Left-pad uniqueId to 32 bytes
-  const calldata = REGISTER_SELECTOR + uniqueIdHex.slice(2).padStart(64, "0");
+  const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
 
   try {
-    // Send transaction via MetaMask
-    const txParams: any = {
-      from,
-      to: CONTRACT_ADDRESS,
-      data: calldata,
-      gas: "0x186A0", // 100000 gas
-    };
-
-    const txHash: string = await (window as any).ethereum.request({
-      method: "eth_sendTransaction",
-      params: [txParams],
-    });
-
-    // Wait for confirmation (optional: using ethers.js could give receipt)
+    const tx = await contract.register(uniqueIdHex); // ethers.js handles gas automatically
     if (toast) {
       toast({
         title: "Transaction sent",
-        description: `Tx hash: ${txHash.slice(0, 10)}...`,
+        description: `Waiting for confirmation...`,
+      });
+    }
+
+    const receipt = await tx.wait(); // wait for mining
+    if (toast) {
+      toast({
+        title: "Transaction confirmed",
+        description: `Tx hash: ${receipt.transactionHash.slice(0, 10)}...`,
       });
     }
 
@@ -79,11 +78,11 @@ export async function registerOnChainAndPersist(
         user_id: userId,
         wallet: from,
         unique_id: uniqueIdHex,
-        tx_hash: txHash,
+        tx_hash: receipt.transactionHash,
       });
     }
 
-    return txHash;
+    return receipt.transactionHash;
   } catch (err: any) {
     throw new Error("Blockchain transaction failed: " + (err.message || err));
   }
