@@ -1,13 +1,14 @@
 /* =======================================================
-   Profile‑completion page – 100 % vanilla TS+React
+   Profile-completion page – 100% vanilla TS + React
    ------------------------------------------------------
-   New behaviour:
+   Integrated with blockchain:
    * Pulls MetaMask wallet if not already stored
    * Generates a unique ID
-   * Persists wallet_address, unique_id, and sends the chain transaction
-   * Stores the tx hash and shows a clickable link to Etherscan
-   =======================================================
-*/
+   * Persists wallet_address + unique_id in Supabase
+   * Calls the Registry smart contract (register)
+   * Stores the tx hash in Supabase
+   * Shows a clickable link to Etherscan
+   ======================================================= */
 
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -29,7 +30,7 @@ import {
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { User, FileText, Phone, MapPin } from "lucide-react";
+import { User, FileText, Phone, Mail } from "lucide-react";
 import {
   getEthereumAccount,
   generateUniqueId,
@@ -46,6 +47,7 @@ interface FormData {
 }
 
 const ProfileCompletion: React.FC = () => {
+  /* ------------ state --------------------------------------------- */
   const [formData, setFormData] = useState<FormData>({
     name: "",
     nationality: "",
@@ -58,6 +60,7 @@ const ProfileCompletion: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  /* ------------ helpers ------------------------------------------- */
   const handleInputChange = (field: keyof FormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
@@ -82,7 +85,7 @@ const ProfileCompletion: React.FC = () => {
     if (!formData.passport && formData.nationality !== "Indian") {
       toast({
         title: "Passport required",
-        description: "Passport number is required for non‑Indian citizens",
+        description: "Passport number is required for non-Indian citizens",
         variant: "destructive",
       });
       return false;
@@ -99,51 +102,49 @@ const ProfileCompletion: React.FC = () => {
     return true;
   };
 
+  /* ------------ submission ---------------------------------------- */
   const handleSubmit = async () => {
     if (!validateForm()) return;
 
     setLoading(true);
     try {
-      /* 1) Current logged‑in Supabase user */
+      /* 1) Get logged-in Supabase user */
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not found");
 
-      /* 2) Get MetaMask address + unique ID if missing in profile */
+      /* 2) Get MetaMask wallet address + generate unique ID */
       const walletAddress = await getEthereumAccount();
       const uniqueId = await generateUniqueId(walletAddress);
 
-      /* 3) Build the profile payload (including wallet & id) */
+      /* 3) Build profile payload */
       const profileData = {
         user_id: user.id,
         full_name: formData.name,
-        phone: formData.phone,
         nationality: formData.nationality,
         passport_number: formData.passport || null,
         aadhaar_number: formData.aadhaar || null,
+        phone: formData.phone,
         email: formData.email,
         wallet_address: walletAddress,
         unique_id: uniqueId,
       };
 
-      /* 4) Upsert into the profiles table */
+      /* 4) Save in Supabase profiles table */
       const { error: profileError } = await supabase
         .from("profiles")
         .upsert(profileData, { onConflict: "user_id" });
 
-      if (profileError) {
-        console.error(profileError);
-        throw profileError;
-      }
+      if (profileError) throw profileError;
 
-      /* 5) Send the chain transaction and persist the tx hash */
+      /* 5) Send blockchain transaction */
       await registerOnChainAndPersist(uniqueId, user.id, toast);
 
       /* 6) Success UI */
       toast({
-        title: "Profile completed!",
-        description:
-          "Your profile has been successfully updated. You can now access the dashboard.",
+        title: "Profile completed",
+        description: "Your profile is saved and registered on-chain.",
       });
+
       navigate("/dashboard");
     } catch (error: any) {
       console.error(error);
@@ -157,6 +158,7 @@ const ProfileCompletion: React.FC = () => {
     }
   };
 
+  /* ------------ UI ------------------------------------------------ */
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-secondary/20 to-accent/10 p-4 flex items-center justify-center">
       <Card className="w-full max-w-2xl mx-auto shadow-xl">
@@ -168,7 +170,7 @@ const ProfileCompletion: React.FC = () => {
             Complete Your Profile
           </CardTitle>
           <p className="text-muted-foreground mt-2">
-            Please provide your personal information & KYC details
+            Provide your information & link your wallet
           </p>
         </CardHeader>
 
@@ -183,8 +185,9 @@ const ProfileCompletion: React.FC = () => {
                   id="name"
                   value={formData.name}
                   onChange={(e) => handleInputChange("name", e.target.value)}
-                  placeholder="Enter your full name as per passport/Aadhaar"
+                  placeholder="Enter your full name"
                   className="pl-10"
+                  required
                 />
               </div>
             </div>
@@ -209,7 +212,7 @@ const ProfileCompletion: React.FC = () => {
               </Select>
             </div>
 
-            {/* Passport (non‑Indian) */}
+            {/* Passport */}
             {formData.nationality !== "Indian" && (
               <div className="space-y-2">
                 <Label htmlFor="passport">Passport Number *</Label>
@@ -223,12 +226,13 @@ const ProfileCompletion: React.FC = () => {
                     }
                     placeholder="Enter your passport number"
                     className="pl-10"
+                    required
                   />
                 </div>
               </div>
             )}
 
-            {/* Aadhaar (Indian) */}
+            {/* Aadhaar */}
             {formData.nationality === "Indian" && (
               <div className="space-y-2">
                 <Label htmlFor="aadhaar">Aadhaar Number *</Label>
@@ -240,15 +244,16 @@ const ProfileCompletion: React.FC = () => {
                     onChange={(e) =>
                       handleInputChange("aadhaar", e.target.value)
                     }
-                    placeholder="Enter your 12‑digit Aadhaar number"
+                    placeholder="Enter your 12-digit Aadhaar number"
                     className="pl-10"
                     maxLength={12}
+                    required
                   />
                 </div>
               </div>
             )}
 
-            {/* Phone number */}
+            {/* Phone */}
             <div className="space-y-2">
               <Label htmlFor="phone">Phone Number *</Label>
               <div className="relative">
@@ -259,6 +264,7 @@ const ProfileCompletion: React.FC = () => {
                   onChange={(e) => handleInputChange("phone", e.target.value)}
                   placeholder="+91 9876543210"
                   className="pl-10"
+                  required
                 />
               </div>
             </div>
@@ -267,7 +273,7 @@ const ProfileCompletion: React.FC = () => {
             <div className="space-y-2">
               <Label htmlFor="email">Email Address *</Label>
               <div className="relative">
-                <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="email"
                   type="email"
@@ -275,6 +281,7 @@ const ProfileCompletion: React.FC = () => {
                   onChange={(e) => handleInputChange("email", e.target.value)}
                   placeholder="you@example.com"
                   className="pl-10"
+                  required
                 />
               </div>
             </div>
