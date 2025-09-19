@@ -1,55 +1,81 @@
 import { ethers } from "ethers";
+import { supabase } from "@/integrations/supabase/client";
+import { Toast } from "@/hooks/use-toast";
 
-// Replace with your deployed Registry address + ABI
-const CONTRACT_ADDRESS = "0xYourRegistryAddress";
-const CONTRACT_ABI = [
+/* Contract ABI (from your Registry.sol) */
+const registryAbi = [
   "function register(bytes32 uniqueId) external",
-  "function walletToId(address) view returns (bytes32)"
+  "event Registered(address indexed wallet, bytes32 indexed uniqueId)",
 ];
 
+/* ✅ replace with your deployed Registry contract address */
+const registryAddress = "0x0d0A38A501B2AD98248eD7E17b6025D9a55F5044";
+
+/**
+ * Connect to MetaMask and return the first account
+ */
 export async function getEthereumAccount(): Promise<string> {
-  if (!window.ethereum) throw new Error("MetaMask not found");
-  const [account] = await window.ethereum.request({ method: "eth_requestAccounts" });
-  return account;
+  if (!(window as any).ethereum) {
+    throw new Error("MetaMask not detected");
+  }
+  const provider = new ethers.BrowserProvider((window as any).ethereum);
+  await provider.send("eth_requestAccounts", []);
+  const signer = await provider.getSigner();
+  return signer.address;
 }
 
-export async function generateUniqueId(address: string): Promise<string> {
-  // A simple hash from address + timestamp
-  const hash = ethers.utils.keccak256(
-    ethers.utils.toUtf8Bytes(address + Date.now().toString())
+/**
+ * Generate a deterministic 32-byte ID from wallet + timestamp
+ */
+export function generateUniqueId(wallet: string): string {
+  const hash = ethers.keccak256(
+    ethers.toUtf8Bytes(wallet + Date.now().toString())
   );
-  return hash;
+  return hash; // 0x… 64 hex chars
 }
 
+/**
+ * Call the Registry contract and persist txHash in Supabase
+ */
 export async function registerOnChainAndPersist(
   uniqueId: string,
   userId: string,
-  toast: any
+  toast: Toast
 ) {
-  if (!window.ethereum) throw new Error("MetaMask not installed");
+  if (!(window as any).ethereum) {
+    throw new Error("MetaMask not detected");
+  }
 
-  const provider = new ethers.providers.Web3Provider(window.ethereum);
-  const signer = provider.getSigner();
-  const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+  const provider = new ethers.BrowserProvider((window as any).ethereum);
+  const signer = await provider.getSigner();
+  const contract = new ethers.Contract(registryAddress, registryAbi, signer);
 
-  // Convert uniqueId (hex string) → bytes32
-  const tx = await contract.register(uniqueId);
-  await tx.wait();
+  try {
+    const tx = await contract.register(uniqueId);
+    toast({
+      title: "Transaction sent",
+      description: `Tx hash: ${tx.hash}`,
+    });
 
-  // Example: store tx hash in Supabase (optional)
-  // await supabase.from("onchain_logs").insert({ user_id: userId, tx_hash: tx.hash });
+    const receipt = await tx.wait();
 
-  toast({
-    title: "On-chain registration complete",
-    description: (
-      <a
-        href={`https://sepolia.etherscan.io/tx/${tx.hash}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="underline"
-      >
-        View transaction
-      </a>
-    ),
-  });
+    // Save txHash in Supabase
+    const { error } = await supabase.from("profiles").update({
+      tx_hash: tx.hash,
+    }).eq("user_id", userId);
+
+    if (error) {
+      console.error("Supabase update error:", error);
+    }
+
+    toast({
+      title: "Transaction confirmed",
+      description: `View on Etherscan: https://sepolia.etherscan.io/tx/${tx.hash}`,
+    });
+
+    return receipt;
+  } catch (err: any) {
+    console.error("Contract call failed:", err);
+    throw new Error(err.message || "On-chain registration failed");
+  }
 }
