@@ -1,17 +1,8 @@
 /* ------------------------------------------------------------------
    src/pages/Dashboard.tsx
    ------------------------------------------------------------------
-   The Dashboard now contains **all** the map logic that was split
-   out into the separate *IndiaAlertMap* component.  
-   •  Live threat alerts (India only) are fetched, parsed from
-      the NDMA SACHET CAP feed and rendered on the same Google‑Maps
-      instance that shows the user marker and normal geofence circles.  
-   •  Threat circles are coloured by severity and show an
-      info‑window on click (title + description).  
-   •  A safety‑score is calculated from the active threat zones and
-      displayed next to the location card.  
-   •  All existing behaviour – authentication, destination CRUD,
-      panic button, toast notifications, etc. – remains exactly as before.
+   Full‐stack Dashboard – live threat‑zone feed integrated
+   (NDMA SACHET CAP → Google‑Maps circles + safety score)
    ------------------------------------------------------------------ */
 
 import { useEffect, useState, useRef } from "react";
@@ -69,7 +60,7 @@ const getDistance = (
   lat2: number,
   lon2: number
 ) => {
-  const R = 6371e3; // metres
+  const R = 6371e3;
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const φ1 = toRad(lat1);
   const φ2 = toRad(lat2);
@@ -81,7 +72,7 @@ const getDistance = (
     Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
 
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c; // metres
+  return R * c;
 };
 
 /* ------------------------------------------------------------------
@@ -92,21 +83,20 @@ const Dashboard = () => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [destinations, setDestinations] = useState<Destination[]>([]);
-  const [location, setLocation] = useState<{
-    lat: number;
-    lng: number;
-  } | null>(null);
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(
+    null
+  );
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [isSafe, setIsSafe] = useState(true);
   const [activeTab, setActiveTab] = useState("dashboard");
 
-  /* ========== NEW STATE ========== */
+  /* ========== NEW STATE ================= */
   const [alertZones, setAlertZones] = useState<AlertZone[]>([]);
   const [safetyScore, setSafetyScore] = useState(100);
   const inThreatZone = useRef<Record<string, boolean>>({});
 
-  /* ========== MAP REFS ========== */
+  /* ========== MAP REFERENCES ========== */
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<any>(null);
   const markerRef = useRef<any>(null);
@@ -115,9 +105,9 @@ const Dashboard = () => {
   /* ========== GEOFENCE STATE ========== */
   const geofenceStatus = useRef<Record<string, boolean>>({});
   const geofenceCircles = useRef<Record<string, any>>({});
-  const GEOFENCE_RADIUS = 3000; // m
+  const GEOFENCE_RADIUS = 3000; // metres
 
-  /* ========== A AUDIO REFERENCE ========== */
+  /* ========== AUDIO REFERENCE ========== */
   const beepRef = useRef<HTMLAudioElement | null>(null);
 
   /* ========== NAV & TOAST ========== */
@@ -125,7 +115,7 @@ const Dashboard = () => {
   const { toast } = useToast();
 
   /* ------------------------------------------------------------------
-     Unlock audio on first click – original
+     Unlock audio on first user click – original
      ------------------------------------------------------------------ */
   useEffect(() => {
     const unlockAudio = () => {
@@ -151,6 +141,7 @@ const Dashboard = () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
+
       if (user) {
         setUser(user);
 
@@ -172,6 +163,7 @@ const Dashboard = () => {
       }
       setLoading(false);
     };
+
     getUser();
 
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
@@ -182,9 +174,7 @@ const Dashboard = () => {
   }, [navigate]);
 
   /* ------------------------------------------------------------------
-     Real‑time location, map and geofencing.
-     All logic from the original component plus the new **threat
-     zones** drawn in the same map.
+     Real‑time location + map + geofences + threat zones
      ------------------------------------------------------------------ */
   useEffect(() => {
     if (!("geolocation" in navigator)) return;
@@ -195,7 +185,7 @@ const Dashboard = () => {
         const lng = pos.coords.longitude;
         setLocation({ lat, lng });
 
-        /* -- MAP INIT -- */
+        /* ---- MAP INITIALISATION ---- */
         if (mapRef.current && !mapInstance.current && (window as any).google) {
           mapInstance.current = new (window as any).google.maps.Map(mapRef.current, {
             center: { lat, lng },
@@ -209,18 +199,18 @@ const Dashboard = () => {
           });
         }
 
-        /* -- UPDATE USER MARKER -- */
+        /* ---- UPDATE USER MARKER ---- */
         if (markerRef.current) {
           markerRef.current.setPosition({ lat, lng });
         }
 
-        /* -- PAN ON FIRST LOAD -- */
+        /* ---- PAN ON FIRST LOAD ONLY ---- */
         if (mapInstance.current && isFirstLoad.current) {
           mapInstance.current.panTo({ lat, lng });
           isFirstLoad.current = false;
         }
 
-        /* === NORMAL GEOFECKS (green circles) === */
+        /* --- DRAW NORMAL GEOFENCES (green circles) --- */
         if (mapInstance.current) {
           destinations.forEach((dest) => {
             if (dest.latitude && dest.longitude) {
@@ -248,9 +238,8 @@ const Dashboard = () => {
             }
           });
 
-          /* === THREAT ZONES: circles + pin (info‑window on click) === */
+          /* --- DRAW THREAT ZONES (circle + info‑window) --- */
           alertZones.forEach((zone) => {
-            /* circle */
             const circle = new (window as any).google.maps.Circle({
               strokeColor: severityToColour(zone.severity),
               strokeOpacity: 0.8,
@@ -262,13 +251,12 @@ const Dashboard = () => {
               radius: zone.radiusMeters,
             });
 
-            /* info‑window */
+            /* Info‑window on click */
             const infoWindow = new (window as any).google.maps.InfoWindow({
-              content: `<strong>${zone.title}</strong><br />${zone.description}`,
+              content: `<b>${zone.title}</b><br>${zone.description}`,
             });
 
             circle.addListener("click", () => {
-              /* create a dummy marker as the anchor – keeps the window anchored to the circle centre */
               const anchor = new (window as any).google.maps.Marker({
                 position: { lat: zone.lat, lng: zone.lng },
                 map: mapInstance.current,
@@ -280,10 +268,12 @@ const Dashboard = () => {
           });
         }
 
-        /* === CHECK GEOFECKS AND THRÊATS === */
-        if (user && destinations.length > 0) {
+        /* ----- CHECK GEOFENCES & THREATS ----- */
+        if (user && destinations.length > 0 && alertZones.length) {
           let insideAnyGeofence = false;
+          let insideAnyThreat = false;
 
+          /* geofences */
           destinations.forEach((dest) => {
             if (!dest.latitude || !dest.longitude) return;
             const distance = getDistance(
@@ -313,8 +303,7 @@ const Dashboard = () => {
             geofenceStatus.current[dest.id] = isInside;
           });
 
-          /* --- THREAT ZONE CHECKS --- */
-          let insideAnyThreat = false;
+          /* threat zones */
           alertZones.forEach((zone) => {
             const d = getDistance(lat, lng, zone.lat, zone.lng);
             const inside = d <= zone.radiusMeters;
@@ -339,27 +328,24 @@ const Dashboard = () => {
             inThreatZone.current[zone.id] = inside;
           });
 
-          /* --- UPDATE SAFE / UNSAFE STATUS --- */
+          /* update safe/unsafe & score */
           setIsSafe(insideAnyGeofence && !insideAnyThreat);
-
-          /* --- UPDATE SAFETY SCORE --- */
           const score = calculateSafetyScore(alertZones, lat, lng);
           setSafetyScore(score);
 
-          /* --- PLAY BEEP WHEN EXITING THREAT ZONE --- */
           if (!insideAnyThreat && Object.values(inThreatZone.current).some(Boolean)) {
             if (beepRef.current) {
               beepRef.current.currentTime = 0;
               beepRef.current.play().catch(() => {
                 console.warn(
-                  "Autoplay prevented. User interaction required."
+                  "Autoplay prevented by browser. User interaction required."
                 );
               });
             }
           }
         }
 
-        /* --- UPDATE SERVER WITH LOCATION --- */
+        /* ----- UPDATE DATABASE ----- */
         if (user) {
           updateUserLocation(user.id, lat, lng);
         }
@@ -379,7 +365,7 @@ const Dashboard = () => {
   }, [toast, destinations, alertZones, user]);
 
   /* ------------------------------------------------------------------
-     Periodic location upload – original
+     Periodically push location to DB (15 s) – original
      ------------------------------------------------------------------ */
   useEffect(() => {
     if (!user || !location) return;
@@ -424,7 +410,7 @@ const Dashboard = () => {
   };
 
   /* ------------------------------------------------------------------
-     Destination CRUD – original
+     Fetch user destinations – original
      ------------------------------------------------------------------ */
   const fetchDestinations = async (userId: string) => {
     try {
@@ -478,7 +464,7 @@ const Dashboard = () => {
   };
 
   /* ------------------------------------------------------------------
-     Photon search – original
+     Photon suggestions – original
      ------------------------------------------------------------------ */
   const fetchSuggestions = async (value: string) => {
     setQuery(value);
@@ -588,85 +574,93 @@ const Dashboard = () => {
      Live threat‑zone fetch (NDMA SACHET) – new
      ------------------------------------------------------------------ */
   useEffect(() => {
-    const loadThreatZones = async () => {
+    const fetchThreatZones = async () => {
+      const feedUrl =
+        "https://sachet.ndma.gov.in/CapFeed";
+      const proxyUrl =
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(feedUrl)}`;
+
       try {
-        const feedUrl =
-          "https://sachet.ndma.gov.in/CapFeed";
-        const resp = await fetch(feedUrl);
-        const xmlText = await resp.text();
+        const resp = await fetch(proxyUrl);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const text = await resp.text();
+
         const parser = new DOMParser();
-        const xml = parser.parseFromString(xmlText, "application/xml");
+        const xml = parser.parseFromString(text, "application/xml");
+        const alerts = Array.from(xml.querySelectorAll("alert"));
 
-        const alerts = Array.from(xml.getElementsByTagName("alert"));
-        const zones: AlertZone[] = alerts
-          .map((alertEl) => {
-            try {
-              const identifier =
-                alertEl
-                  .getElementsByTagName("identifier")[0]
-                  ?.textContent?.trim() || "";
-              const info = alertEl.getElementsByTagName("info")[0];
-              if (!info) return null;
+        const zones: AlertZone[] = alerts.reduce((acc, alert) => {
+          try {
+            const identifier = alert
+              .querySelector("identifier")?.textContent?.trim() || "";
+            const info = alert.querySelector("info");
+            if (!info) return acc;
 
-              const area = info.getElementsByTagName("area")[0];
-              if (!area) return null;
+            const event = info.querySelector("event")?.textContent?.trim() || "Alert";
+            const description =
+              info.querySelector("description")?.textContent?.trim() || "";
 
-              const geocodes = area.getElementsByTagName("geocode");
-              const countryCode = geocodes[0]
-                ?.getElementsByTagName("value")[0]
-                ?.textContent?.trim() ?? "";
+            const area = info.querySelector("area");
+            if (!area) return acc;
 
-              if (countryCode !== "IN") return null; // only India
+            /* country filter – keep only India */
+            const geocodes = Array.from(area.querySelectorAll("geocode"));
+            const countryCode = geocodes
+              .map((g) =>
+                g.querySelector("value")?.textContent?.trim()
+              )
+              .find((v) => v);
+            if (countryCode && countryCode !== "IN") return acc;
 
-              const circle = area.getElementsByTagName("circle")[0];
-              if (!circle) return null;
-              const circleText = circle.textContent?.trim() ?? "";
-              const [posPart, radiusPart] = circleText.split(" ");
-              const [latStr, lngStr] = posPart.split(",").map((s) => s.trim());
-              const lat = parseFloat(latStr);
-              const lng = parseFloat(lngStr);
-              const radiusKm = parseFloat(radiusPart) || 1;
+            const circle = area.querySelector("circle");
+            if (!circle) return acc;
+            const circleText = circle.textContent?.trim() || "";
+            const [center, rad] = circleText.split(" ");
+            const [latStr, lngStr] = center.split(",").map((s) => s.trim());
+            const lat = parseFloat(latStr);
+            const lng = parseFloat(lngStr);
+            const radiusMeters = parseFloat(rad) * 1000;
 
-              const severityTag = info
-                .getElementsByTagName("severity")[0]
-                ?.textContent?.trim()
-                ?.toLowerCase();
+            const severityTag = info
+              .querySelector("severity")?.textContent?.trim()
+              ?.toLowerCase() ?? "low";
+            let severity: AlertZone["severity"] = "low";
+            if (severityTag === "moderate") severity = "medium";
+            else if (severityTag === "severe") severity = "high";
 
-              let severity: "low" | "medium" | "high" = "low";
-              if (severityTag === "moderate") severity = "medium";
-              else if (severityTag === "severe") severity = "high";
-
-              return {
-                id: identifier,
-                title: info.getElementsByTagName("event")[0]?.textContent?.trim() || "Alert",
-                description:
-                  info.getElementsByTagName("description")[0]
-                    ?.textContent?.trim() ?? "",
-                lat,
-                lng,
-                radiusMeters: radiusKm * 1000,
-                severity,
-              };
-            } catch (e) {
-              console.error("Error parsing CAP alert:", e);
-              return null;
-            }
-          })
-          .filter((z): z is AlertZone => z !== null);
+            acc.push({
+              id: identifier,
+              title: event,
+              description,
+              lat,
+              lng,
+              radiusMeters,
+              severity,
+            });
+          } catch (e) {
+            console.warn("Failed to parse an alert:", e);
+          }
+          return acc;
+        }, [] as AlertZone[]);
 
         setAlertZones(zones);
-      } catch (err) {
-        console.error("Error fetching threat alerts:", err);
+      } catch (e: any) {
+        console.error("Error fetching threat alerts:", e);
+        toast({
+          title: "Threat alerts not available",
+          description: e.message,
+          variant: "destructive",
+        });
       }
     };
 
-    loadThreatZones();
-    const iv = setInterval(loadThreatZones, 5 * 60 * 1000); // every 5 min
+    fetchThreatZones();
+    const iv = setInterval(fetchThreatZones, 5 * 60 * 1000); // every 5 min
     return () => clearInterval(iv);
   }, []);
 
   /* ------------------------------------------------------------------
-     Severity color helper – used when drawing circles.
+     Helper – colour per severity
      ------------------------------------------------------------------ */
   const severityToColour = (sev: AlertZone["severity"]) => {
     switch (sev) {
@@ -680,7 +674,7 @@ const Dashboard = () => {
   };
 
   /* ------------------------------------------------------------------
-     Safety‑score calculation – based on current threat zones.
+     Safety score calculation
      ------------------------------------------------------------------ */
   const calculateSafetyScore = (
     zones: AlertZone[],
@@ -700,7 +694,7 @@ const Dashboard = () => {
   };
 
   /* ------------------------------------------------------------------
-     Render – unchanged UI + safety‑score display
+     Render – unchanged UI
      ------------------------------------------------------------------ */
   if (loading) {
     return (
@@ -732,9 +726,7 @@ const Dashboard = () => {
                   <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                     Incredible India
                   </h1>
-                  <p className="text-sm text-muted-foreground">
-                    Tourism Dashboard
-                  </p>
+                  <p className="text-sm text-muted-foreground">Tourism Dashboard</p>
                 </div>
               </div>
               <Button
@@ -766,7 +758,9 @@ const Dashboard = () => {
               <TabsTrigger value="alerts">Live Threats</TabsTrigger>
             </TabsList>
 
+            {/* ================================================================== */}
             {/* ====================== Dashboard ====================== */}
+            {/* ================================================================== */}
             <TabsContent value="dashboard" className="space-y-6">
               <Card className="bg-gradient-to-r from-primary to-accent text-white border-0 shadow-xl">
                 <CardHeader className="pb-6">
@@ -847,7 +841,7 @@ const Dashboard = () => {
                     Plan Your Destinations
                   </CardTitle>
                   <CardDescription>
-                    Search for locations using Photon API and add them to yourtravel list.
+                    Search for locations using Photon API and add them to your travel list.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -905,7 +899,9 @@ const Dashboard = () => {
               </Card>
             </TabsContent>
 
+            {/* ================================================================== */}
             {/* ====================== Help Desk ====================== */}
+            {/* ================================================================== */}
             <TabsContent value="helpdesk">
               <Card>
                 <CardHeader>
@@ -923,7 +919,9 @@ const Dashboard = () => {
               </Card>
             </TabsContent>
 
+            {/* ================================================================== */}
             {/* ====================== Live Threats ====================== */}
+            {/* ================================================================== */}
             <TabsContent value="alerts">
               <Card>
                 <CardHeader>
@@ -936,10 +934,9 @@ const Dashboard = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {/* The threat zones are already drawn on the same map shown
-                      in the Live Location card.  Nothing more is required
-                      here – the map above displays them.  This tab simply
-                      documents the feature. */}
+                  {/* The threat zones are already rendered on the same map
+                      shown in the “Live Location” card.  Nothing more
+                      is required here – the map above displays them. */}
                   <div className="text-sm text-muted-foreground">
                     The threat zones above are updated every 5 minutes
                     from the NDMA SACHET CAP feed.
