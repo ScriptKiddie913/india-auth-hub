@@ -11,20 +11,10 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TabsContent,
-} from "@/components/ui/tabs";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 
-/* -------------------------------------------------- Interfaces -------------------------------------------------- */
+// ✅ Interfaces
 interface PanicAlert {
   id: string;
   user_id: string;
@@ -42,147 +32,113 @@ interface LiveThread {
   created_at: string;
 }
 
-/* -------------------------------------------------- Helper: Realtime subscription -------------------------------------------------- */
-const useSubscription = (
-  channelName: string,
-  events: string[],
-  callback: (payload: any) => void
-) => {
-  useEffect(() => {
-    const channel = supabase
-      .channel(channelName)
-      .on<{
-        new: PanicAlert | LiveThread;
-        update: PanicAlert | LiveThread;
-        delete: { id: string };
-      }>(events[0], (payload) => callback(payload))
-      .subscribe();
-
-    return () => supabase.removeChannel(channel);
-  }, [channelName, events, callback]);
-};
-
-/* -------------------------------------------------- Component -------------------------------------------------- */
 const PoliceDashboard: React.FC = () => {
-  /* ---- State ---- */
   const [panicAlerts, setPanicAlerts] = useState<PanicAlert[]>([]);
   const [liveThreads, setLiveThreads] = useState<LiveThread[]>([]);
   const [filter, setFilter] = useState<"all" | "active" | "resolved">("all");
   const [selectedAlert, setSelectedAlert] = useState<PanicAlert | null>(null);
 
-  /* ---- Advisory form ---- */
+  // Advisory form states
   const [advisoryMessage, setAdvisoryMessage] = useState("");
   const [advisoryLat, setAdvisoryLat] = useState("");
   const [advisoryLng, setAdvisoryLng] = useState("");
 
-  /* ---- Hooks ---- */
   const { toast } = useToast();
   const navigate = useNavigate();
+
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
 
-  /* ---- Utility: Load Google Maps script once ---- */
-  const loadGoogleMaps = (): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      if ((window as any).google && (window as any).google.maps) {
-        resolve();
-        return;
-      }
+  /* ✅ Fetch panic alerts */
+  const fetchPanicAlerts = async () => {
+    const { data, error } = await supabase
+      .from("panic_alerts")
+      .select("*")
+      .order("created_at", { ascending: false });
 
-      const scriptId = "google-maps-script";
-      if (document.getElementById(scriptId)) {
-        // If script is already in the document, listen for load event
-        const existing = document.getElementById(scriptId)!;
-        existing.addEventListener("load", () => resolve());
-        return;
-      }
-
-      const script = document.createElement("script");
-      script.id = scriptId;
-      script.src =
-        "https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=places";
-      script.async = true;
-      script.defer = true;
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error("Google Maps failed to load"));
-      document.body.appendChild(script);
-    });
+    if (error) {
+      console.error("Error fetching alerts:", error);
+    } else {
+      setPanicAlerts(data || []);
+    }
   };
 
-  /* ---- Map initialization ---- */
-  useEffect(() => {
-    loadGoogleMaps()
-      .then(() => {
-        if (!mapRef.current || mapInstance.current) return;
-        mapInstance.current = new (window as any).google.maps.Map(mapRef.current, {
-          center: { lat: 22.5726, lng: 88.3639 }, // Kolkata
-          zoom: 12,
-        });
-        // Initial marker sync if data already available
-        if (panicAlerts.length || liveThreads.length) {
-          updateMarkers(panicAlerts, liveThreads);
-        }
-      })
-      .catch((e) => console.error(e));
-  }, []); // only run once
+  /* ✅ Fetch advisories */
+  const fetchLiveThreads = async () => {
+    const { data, error } = await supabase
+      .from("live_threads")
+      .select("*")
+      .order("created_at", { ascending: false });
 
-  /* ---- Real‑time listeners for both tables ---- */
-  useSubscription(
-    "panic_alerts",
-    ["INSERT", "UPDATE", "DELETE"],
-    (payload) => {
-      const { new: newAlert, update: updatedAlert, delete: deleted } = payload;
-      if (newAlert) {
-        setPanicAlerts((prev) => [newAlert as PanicAlert, ...prev]);
-      } else if (updatedAlert) {
-        const u = updatedAlert as PanicAlert;
-        setPanicAlerts((prev) =>
-          prev.map((a) => (a.id === u.id ? u : a))
-        );
-      } else if (deleted) {
-        setPanicAlerts((prev) =>
-          prev.filter((a) => a.id !== deleted.id)
-        );
-      }
+    if (error) {
+      console.error("Error fetching advisories:", error);
+    } else {
+      setLiveThreads(data || []);
     }
-  );
+  };
 
-  useSubscription(
-    "live_threads",
-    ["INSERT", "UPDATE", "DELETE"],
-    (payload) => {
-      const { new: newThread, update: updatedThread, delete: deleted } = payload;
-      if (newThread) {
-        setLiveThreads((prev) => [newThread as LiveThread, ...prev]);
-      } else if (updatedThread) {
-        const u = updatedThread as LiveThread;
-        setLiveThreads((prev) =>
-          prev.map((t) => (t.id === u.id ? u : t))
-        );
-      } else if (deleted) {
-        setLiveThreads((prev) =>
-          prev.filter((t) => t.id !== deleted.id)
-        );
-      }
-    }
-  );
-
-  /* ---- Marker sync when data changes ---- */
   useEffect(() => {
-    if (!mapInstance.current) return;
-    updateMarkers(panicAlerts, liveThreads);
+    fetchPanicAlerts();
+    fetchLiveThreads();
+    const interval = setInterval(() => {
+      fetchPanicAlerts();
+      fetchLiveThreads();
+    }, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  /* ✅ Initialize Google Map */
+  useEffect(() => {
+    const initMap = () => {
+      if (!mapRef.current || mapInstance.current) return;
+
+      mapInstance.current = new (window as any).google.maps.Map(mapRef.current, {
+        center: { lat: 22.5726, lng: 88.3639 }, // Kolkata
+        zoom: 12,
+      });
+
+      if (panicAlerts.length > 0 || liveThreads.length > 0) {
+        updateMarkers(panicAlerts, liveThreads);
+      }
+    };
+
+    const scriptId = "google-maps-script";
+    if (!(window as any).google || !(window as any).google.maps) {
+      if (!document.getElementById(scriptId)) {
+        const script = document.createElement("script");
+        script.id = scriptId;
+        script.src =
+          "https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=places";
+        script.async = true;
+        script.defer = true;
+
+        script.onload = initMap;
+        document.body.appendChild(script);
+      } else {
+        document.getElementById(scriptId)?.addEventListener("load", initMap);
+      }
+    } else {
+      initMap();
+    }
+  }, []);
+
+  /* ✅ Update markers whenever data changes */
+  useEffect(() => {
+    if (mapInstance.current) {
+      updateMarkers(panicAlerts, liveThreads);
+    }
   }, [panicAlerts, liveThreads]);
 
-  /* ---- Markers creation / cleanup ---- */
+  /* ✅ Update markers on the map */
   const updateMarkers = (alerts: PanicAlert[], threads: LiveThread[]) => {
     if (!mapInstance.current || !(window as any).google) return;
 
-    // Clean up old markers
-    markersRef.current.forEach((m) => m.setMap(null));
+    // Clear old markers
+    markersRef.current.forEach((marker) => marker.setMap(null));
     markersRef.current = [];
 
-    // Panic alerts – red
+    // Panic Alerts Markers (Red)
     alerts.forEach((alert) => {
       const marker = new (window as any).google.maps.Marker({
         position: { lat: alert.latitude, lng: alert.longitude },
@@ -208,7 +164,7 @@ const PoliceDashboard: React.FC = () => {
       markersRef.current.push(marker);
     });
 
-    // Live threads – blue
+    // Advisories Markers (Blue)
     threads.forEach((thread) => {
       const marker = new (window as any).google.maps.Marker({
         position: { lat: thread.latitude, lng: thread.longitude },
@@ -225,13 +181,15 @@ const PoliceDashboard: React.FC = () => {
         </div>`,
       });
 
-      marker.addListener("click", () => infowindow.open(mapInstance.current, marker));
+      marker.addListener("click", () => {
+        infowindow.open(mapInstance.current, marker);
+      });
 
       markersRef.current.push(marker);
     });
   };
 
-  /* ---- Resolve alert (updates status in DB) ---- */
+  /* ✅ Resolve alert */
   const handleResolve = async (id: string) => {
     const { error } = await supabase
       .from("panic_alerts")
@@ -245,12 +203,16 @@ const PoliceDashboard: React.FC = () => {
         variant: "destructive",
       });
     } else {
+      setPanicAlerts((prev) =>
+        prev.map((alert) =>
+          alert.id === id ? { ...alert, status: "resolved" } : alert
+        )
+      );
       toast({ title: "Success", description: "Alert marked as resolved" });
-      // No need to update state – real‑time listener will handle it
     }
   };
 
-  /* ---- Advisory CRUD operations ---- */
+  /* ✅ Post advisory */
   const handlePostAdvisory = async () => {
     const { error } = await supabase.from("live_threads").insert([
       {
@@ -271,10 +233,11 @@ const PoliceDashboard: React.FC = () => {
       setAdvisoryMessage("");
       setAdvisoryLat("");
       setAdvisoryLng("");
-      // The real‑time listener will add the new record automatically
+      fetchLiveThreads();
     }
   };
 
+  /* ✅ Delete advisory */
   const handleDeleteAdvisory = async (id: string) => {
     const { error } = await supabase.from("live_threads").delete().eq("id", id);
 
@@ -285,18 +248,18 @@ const PoliceDashboard: React.FC = () => {
         variant: "destructive",
       });
     } else {
+      setLiveThreads((prev) => prev.filter((adv) => adv.id !== id));
       toast({ title: "Success", description: "Advisory deleted" });
-      // Real‑time listener will remove it from state
     }
   };
 
-  /* ---- Sign‑out ---- */
+  /* ✅ Logout */
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate("/police-signin");
   };
 
-  /* ---- Filter + Stats ---- */
+  /* ✅ Filters + Stats */
   const filteredAlerts =
     filter === "all"
       ? panicAlerts
@@ -307,7 +270,6 @@ const PoliceDashboard: React.FC = () => {
   const activeCount = panicAlerts.filter((a) => a.status !== "resolved").length;
   const resolvedCount = panicAlerts.filter((a) => a.status === "resolved").length;
 
-  /* ---- Render ---- */
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -340,19 +302,14 @@ const PoliceDashboard: React.FC = () => {
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <Button
-              onClick={() => {
-                // Re‑fetch just in case
-                // Real‑time will keep sync
-              }}
-            >
+            <Button onClick={() => { fetchPanicAlerts(); fetchLiveThreads(); }}>
               Refresh
             </Button>
           </CardContent>
         </Card>
       </div>
 
-      {/* Map & Alerts */}
+      {/* Map + Alerts */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Map */}
         <Card>
@@ -368,7 +325,7 @@ const PoliceDashboard: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Alerts List */}
+        {/* Alerts List with Tabs */}
         <Card>
           <CardHeader>
             <CardTitle>Panic Alerts</CardTitle>
@@ -393,16 +350,9 @@ const PoliceDashboard: React.FC = () => {
                         onClick={() => setSelectedAlert(alert)}
                       >
                         <div>
-                          <p>
-                            <strong>ID:</strong> {alert.id}
-                          </p>
-                          <p>
-                            <strong>Status:</strong> {alert.status}
-                          </p>
-                          <p>
-                            <strong>Time:</strong>{" "}
-                            {new Date(alert.created_at).toLocaleString()}
-                          </p>
+                          <p><strong>ID:</strong> {alert.id}</p>
+                          <p><strong>Status:</strong> {alert.status}</p>
+                          <p><strong>Time:</strong> {new Date(alert.created_at).toLocaleString()}</p>
                         </div>
                         {alert.status !== "resolved" && (
                           <Button
@@ -424,7 +374,7 @@ const PoliceDashboard: React.FC = () => {
         </Card>
       </div>
 
-      {/* Advisory Post */}
+      {/* Advisory Post Section */}
       <Card>
         <CardHeader>
           <CardTitle>Post Police Advisory</CardTitle>
@@ -455,7 +405,7 @@ const PoliceDashboard: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Advisory List */}
+      {/* Advisory List Section */}
       <Card>
         <CardHeader>
           <CardTitle>All Police Advisories</CardTitle>
@@ -471,17 +421,9 @@ const PoliceDashboard: React.FC = () => {
                   className="p-3 border rounded-lg shadow flex justify-between items-center"
                 >
                   <div>
-                    <p>
-                      <strong>Message:</strong> {adv.message}
-                    </p>
-                    <p>
-                      <strong>Location:</strong> {adv.latitude},{" "}
-                      {adv.longitude}
-                    </p>
-                    <p>
-                      <strong>Posted:</strong>{" "}
-                      {new Date(adv.created_at).toLocaleString()}
-                    </p>
+                    <p><strong>Message:</strong> {adv.message}</p>
+                    <p><strong>Location:</strong> {adv.latitude}, {adv.longitude}</p>
+                    <p><strong>Posted:</strong> {new Date(adv.created_at).toLocaleString()}</p>
                   </div>
                   <Button
                     variant="destructive"
@@ -498,36 +440,19 @@ const PoliceDashboard: React.FC = () => {
 
       {/* Alert Drawer */}
       {selectedAlert && (
-        <Drawer
-          open={!!selectedAlert}
-          onOpenChange={() => setSelectedAlert(null)}
-        >
+        <Drawer open={!!selectedAlert} onOpenChange={() => setSelectedAlert(null)}>
           <DrawerContent>
             <DrawerHeader>
               <DrawerTitle>Alert Details</DrawerTitle>
             </DrawerHeader>
             <div className="p-4 space-y-2">
-              <p>
-                <strong>ID:</strong> {selectedAlert.id}
-              </p>
-              <p>
-                <strong>User:</strong> {selectedAlert.user_id}
-              </p>
-              <p>
-                <strong>Status:</strong> {selectedAlert.status}
-              </p>
-              <p>
-                <strong>Location:</strong>{" "}
-                {selectedAlert.latitude}, {selectedAlert.longitude}
-              </p>
-              <p>
-                <strong>Created At:</strong>{" "}
-                {new Date(selectedAlert.created_at).toLocaleString()}
-              </p>
+              <p><strong>ID:</strong> {selectedAlert.id}</p>
+              <p><strong>User:</strong> {selectedAlert.user_id}</p>
+              <p><strong>Status:</strong> {selectedAlert.status}</p>
+              <p><strong>Location:</strong> {selectedAlert.latitude}, {selectedAlert.longitude}</p>
+              <p><strong>Created At:</strong> {new Date(selectedAlert.created_at).toLocaleString()}</p>
               {selectedAlert.status !== "resolved" && (
-                <Button
-                  onClick={() => handleResolve(selectedAlert.id)}
-                >
+                <Button onClick={() => handleResolve(selectedAlert.id)}>
                   Mark as Resolved
                 </Button>
               )}
