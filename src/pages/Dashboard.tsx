@@ -45,7 +45,7 @@ type Destination = {
 };
 
 /* ------------------------------------------------------------------
-   Haversine – unchanged
+   Haversine distance
    ------------------------------------------------------------------ */
 const getDistance = (
   lat1: number,
@@ -65,7 +65,7 @@ const getDistance = (
     Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
 
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c; // metres
+  return R * c;
 };
 
 const getDistanceMeters = (lat1: number, lon1: number, lat2: number, lon2: number) =>
@@ -79,7 +79,9 @@ const Dashboard = () => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [destinations, setDestinations] = useState<Destination[]>([]);
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(
+    null
+  );
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [isSafe, setIsSafe] = useState(true);
@@ -92,6 +94,7 @@ const Dashboard = () => {
   /* ========== REFERENCES ================= */
   const mapRef = useRef<HTMLDivElement>(null);
   const beepRef = useRef<HTMLAudioElement | null>(null);
+  const locationIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   /* ========== NAV & TOAST ================= */
   const navigate = useNavigate();
@@ -107,7 +110,7 @@ const Dashboard = () => {
           .play()
           .then(() => {
             beepRef.current?.pause();
-            beepRef.current?.currentTime && beepRef.current?.setAttribute("currentTime", "0");
+            beepRef.current?.setAttribute("currentTime", "0");
           })
           .catch(() => {});
       }
@@ -176,7 +179,7 @@ const Dashboard = () => {
           setSafetyScore(score);
         }
 
-        /* DB‑store every 15 s */
+        /* Store in DB every 15 s */
         if (!locationIntervalRef.current) {
           locationIntervalRef.current = setInterval(() => {
             if (location) {
@@ -185,7 +188,7 @@ const Dashboard = () => {
           }, 15000);
         }
 
-        /* Immediate store */
+        /* Immediate DB store */
         if (user) {
           updateUserLocation(user.id, lat, lng);
         }
@@ -205,7 +208,7 @@ const Dashboard = () => {
   }, [user, toast, alertZones]);
 
   /* ------------------------------------------------------------------
-     Threat zones – fetch from NDMA SACHET via proxy
+     Threat zones – fetch from NDMA SACHET via AllOrigins proxy
      ------------------------------------------------------------------ */
   useEffect(() => {
     const loadThreatZones = async () => {
@@ -283,7 +286,7 @@ const Dashboard = () => {
         setAlertZones(zones);
       } catch (err: any) {
         console.error("Error loading threat zones:", err);
-        /* keep empty list – no alert if feed fails */
+        /* keep empty if fetch fails */
       }
     };
 
@@ -486,17 +489,18 @@ const Dashboard = () => {
   };
 
   /* ------------------------------------------------------------------
-     -----  Map rendering helpers ========================= **/
-  const pixelsPerKm = 222; // Yandex static map 500×500 covers ~111 km
+     Map helpers
+     ------------------------------------------------------------------ */
+  const pixelsPerKm = 222; // 500px covers ~111 km
 
   const severityToColour = (sev: AlertZone["severity"]) => {
     switch (sev) {
       case "high":
-        return "rgba(229,46,46,0.3)";
+        return "rgba(229,46,46,0.3)"; // red
       case "medium":
-        return "rgba(229,165,46,0.3)";
+        return "rgba(229,165,46,0.3)"; // orange
       default:
-        return "rgba(42,122,229,0.3)";
+        return "rgba(42,122,229,0.3)"; // blue
     }
   };
 
@@ -518,6 +522,49 @@ const Dashboard = () => {
   };
 
   /* ------------------------------------------------------------------
+     Generate visual positions for zones within 5 km
+     ------------------------------------------------------------------ */
+  const zoneRenders = location
+    ? alertZones
+        .filter((z) => {
+          const d = getDistance(location.lat, location.lng, z.lat, z.lng);
+          return d <= 5000; // keep close ones only
+        })
+        .map((zone) => {
+          const { lat: latC, lng: lngC } = zone;
+          const { lat, lng } = location;
+
+          /* degree offsets */
+          const dLat = latC - lat;
+          const dLng = lngC - lng;
+
+          const radLat = (lat * Math.PI) / 180;
+          const meterPerDegLat = 111000;
+          const meterPerDegLng = 111000 * Math.cos(radLat);
+
+          const offsetY = (dLat * meterPerDegLat) / pixelsPerKm;
+          const offsetX = (dLng * meterPerDegLng) / pixelsPerKm;
+
+          const radiusPx = Math.round(zone.radiusMeters / pixelsPerKm);
+          const size = radiusPx * 2;
+
+          return {
+            ...zone,
+            left: 250 + offsetX - radiusPx,
+            top: 250 + offsetY - radiusPx,
+            size,
+          };
+        })
+    : [];
+
+  /* ------------------------------------------------------------------
+     Yandex static map URL
+     ------------------------------------------------------------------ */
+  const staticMapUrl =
+    location &&
+    `https://static-maps.yandex.ru/1.x/?ll=${location.lng},${location.lat}&z=15&size=500,500&l=map&pt=${location.lng},${location.lat},pm1m1`;
+
+  /* ------------------------------------------------------------------
      Render
      ------------------------------------------------------------------ */
   if (loading) {
@@ -529,47 +576,6 @@ const Dashboard = () => {
   }
 
   if (!user) return null;
-
-  /* Yandex static‑map URL – 500×500, 15 zoom, centre on user */
-  const staticMapUrl =
-    location &&
-    `https://static-maps.yandex.ru/1.x/?ll=${location.lng},${location.lat}&z=15&size=500,500&l=map&pt=${location.lng},${location.lat},pm1m1`;
-
-  /* Compute visual positions for zones that are reasonably close (<5 km) */
-  const zoneRenders = location
-    ? alertZones
-        .filter((z) => {
-          const d = getDistance(location.lat, location.lng, z.lat, z.lng);
-          return d <= 5000; // keep close ones to avoid huge offsets
-        })
-        .map((zone) => {
-          const { lat: latC, lng: lngC } = zone;
-          const { lat, lng } = location;
-
-          /* Degree offsets */
-          const dLat = latC - lat;
-          const dLng = lngC - lng;
-
-          /* Converting to meters */
-          const radLat = (lat * Math.PI) / 180;
-          const meterPerDegLat = 111000; // ≈
-          const meterPerDegLng = 111000 * Math.cos(radLat);
-
-          const offsetY = (dLat * meterPerDegLat) / pixelsPerKm; // px
-          const offsetX = (dLng * meterPerDegLng) / pixelsPerKm; // px
-
-          /* Circle size */
-          const radiusPx = Math.round(zone.radiusMeters / pixelsPerKm);
-
-          /* Position – 250 is half of 500 */
-          return {
-            ...zone,
-            left: 250 + offsetX - radiusPx,
-            top: 250 + offsetY - radiusPx,
-            size: radiusPx * 2,
-          };
-        })
-    : [];
 
   return (
     <div
@@ -693,14 +699,21 @@ const Dashboard = () => {
                   </CardHeader>
 
                   <CardContent>
-                    <div ref={mapRef} className="relative w-500 h-500">
+                    <div
+                      style={{
+                        width: 500,
+                        height: 500,
+                        position: "relative",
+                        overflow: "hidden",
+                      }}
+                    >
                       <img
                         src={staticMapUrl}
                         alt="Current position map"
-                        width={500}
-                        height={500}
+                        style={{ width: "100%", height: "100%" }}
                         className="rounded-lg border"
                       />
+
                       {/* threat circles */}
                       {zoneRenders.map((c) => (
                         <div
@@ -711,9 +724,7 @@ const Dashboard = () => {
                             top: `${c.top}px`,
                             width: `${c.size}px`,
                             height: `${c.size}px`,
-                            backgroundColor: severityToColour(
-                              c.severity as AlertZone["severity"]
-                            ),
+                            backgroundColor: severityToColour(c.severity),
                             borderRadius: "50%",
                           }}
                         />
