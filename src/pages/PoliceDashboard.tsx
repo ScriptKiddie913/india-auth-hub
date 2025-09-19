@@ -34,15 +34,15 @@ interface PanicAlert {
 const PoliceDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+
   const mapRef = useRef<HTMLDivElement | null>(null);
   const mapInstance = useRef<any>(null);
+  const markersRef = useRef<{ [id: string]: any }>({}); // ✅ store markers by alert id
 
-  /* -------- Authentication -------- */
   const [authState, setAuthState] = useState<"loading" | "auth" | "no-auth">("loading");
-
-  /* Panic Alerts State */
   const [panicAlerts, setPanicAlerts] = useState<PanicAlert[]>([]);
 
+  /* -------- Authentication -------- */
   useEffect(() => {
     const checkSession = async () => {
       const { data } = await supabase.auth.getSession();
@@ -70,20 +70,19 @@ const PoliceDashboard: React.FC = () => {
     return () => listener?.unsubscribe();
   }, [navigate, toast]);
 
-  /* -------- Logout -------- */
   const handleLogout = async () => {
     await supabase.auth.signOut();
     toast({ title: "Signed out", description: "You have been logged out." });
     navigate("/police-signin");
   };
 
-  /* -------- Google Map -------- */
+  /* -------- Google Map Init -------- */
   useEffect(() => {
     const initMap = () => {
       if (!mapRef.current || !(window as any).google) return;
 
       mapInstance.current = new (window as any).google.maps.Map(mapRef.current, {
-        center: { lat: 22.5726, lng: 88.3639 }, // Kolkata
+        center: { lat: 22.5726, lng: 88.3639 },
         zoom: 12,
       });
     };
@@ -107,7 +106,7 @@ const PoliceDashboard: React.FC = () => {
     }
   }, []);
 
-  /* -------- Fetch & Realtime Panic Alerts -------- */
+  /* -------- Fetch & Realtime Alerts -------- */
   useEffect(() => {
     const fetchAlerts = async () => {
       const { data, error } = await supabase
@@ -117,7 +116,7 @@ const PoliceDashboard: React.FC = () => {
 
       if (!error && data) {
         setPanicAlerts(data as PanicAlert[]);
-        placeMarkers(data as PanicAlert[]);
+        updateMarkers(data as PanicAlert[]);
       }
     };
 
@@ -125,32 +124,24 @@ const PoliceDashboard: React.FC = () => {
 
     const channel = supabase
       .channel("panic-alerts")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "panic_alerts" },
-        (payload) => {
-          const newAlert = payload.new as PanicAlert;
-          setPanicAlerts((prev) => [newAlert, ...prev]);
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "panic_alerts" }, (payload) => {
+        const newAlert = payload.new as PanicAlert;
+        setPanicAlerts((prev) => [newAlert, ...prev]);
 
-          toast({
-            title: "🚨 New Panic Alert!",
-            description: `Message: ${newAlert.message || "No details"}`,
-            variant: "destructive",
-          });
+        toast({
+          title: "🚨 New Panic Alert!",
+          description: newAlert.message || "No details",
+          variant: "destructive",
+        });
 
-          placeMarkers([newAlert]);
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "panic_alerts" },
-        (payload) => {
-          const updated = payload.new as PanicAlert;
-          setPanicAlerts((prev) =>
-            prev.map((a) => (a.id === updated.id ? updated : a))
-          );
-        }
-      )
+        updateMarkers([newAlert]);
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "panic_alerts" }, (payload) => {
+        const updated = payload.new as PanicAlert;
+        setPanicAlerts((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+
+        updateMarkers([updated]); // ✅ update marker color
+      })
       .subscribe();
 
     return () => {
@@ -158,12 +149,18 @@ const PoliceDashboard: React.FC = () => {
     };
   }, [toast]);
 
-  /* -------- Place Markers on Map -------- */
-  const placeMarkers = (alerts: PanicAlert[]) => {
+  /* -------- Update Markers -------- */
+  const updateMarkers = (alerts: PanicAlert[]) => {
     if (!mapInstance.current || !(window as any).google) return;
 
     alerts.forEach((alert) => {
-      new (window as any).google.maps.Marker({
+      // Remove old marker if exists
+      if (markersRef.current[alert.id]) {
+        markersRef.current[alert.id].setMap(null);
+      }
+
+      // Add new marker
+      const marker = new (window as any).google.maps.Marker({
         position: { lat: alert.latitude, lng: alert.longitude },
         map: mapInstance.current,
         title: alert.message || "Panic Alert",
@@ -174,6 +171,8 @@ const PoliceDashboard: React.FC = () => {
               : "http://maps.google.com/mapfiles/ms/icons/red-dot.png",
         },
       });
+
+      markersRef.current[alert.id] = marker;
     });
   };
 
@@ -185,56 +184,40 @@ const PoliceDashboard: React.FC = () => {
       .eq("id", alertId);
 
     if (error) {
-      toast({
-        title: "Error",
-        description: "Failed to resolve alert",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "Failed to resolve alert", variant: "destructive" });
     } else {
-      toast({
-        title: "✅ Alert Resolved",
-        description: "Marked as resolved successfully.",
-      });
+      toast({ title: "✅ Alert Resolved", description: "Marked as resolved successfully." });
     }
   };
 
-  /* -------- Loading state -------- */
   if (authState === "loading") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary/20 to-accent/10">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-destructive" />
       </div>
     );
   }
 
-  /* -------- Main UI -------- */
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-secondary/20 to-accent/10">
       {/* Header */}
       <header className="border-b bg-card/95 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-400 rounded-full flex items-center justify-center">
-                <Shield className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-blue-700">Officer Dashboard</h1>
-                <p className="text-sm text-muted-foreground flex items-center gap-1">
-                  <AlertTriangle className="h-4 w-4 text-red-500" />
-                  Manage incidents & respond to alerts
-                </p>
-              </div>
+        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+          <div className="flex items-center space-x-4">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-400 rounded-full flex items-center justify-center">
+              <Shield className="w-5 h-5 text-white" />
             </div>
-            <Button
-              onClick={handleLogout}
-              variant="outline"
-              className="flex items-center space-x-2 hover:bg-destructive hover:text-destructive-foreground"
-            >
-              <LogOut className="w-4 h-4" />
-              <span>Logout</span>
-            </Button>
+            <div>
+              <h1 className="text-2xl font-bold text-blue-700">Officer Dashboard</h1>
+              <p className="text-sm text-muted-foreground flex items-center gap-1">
+                <AlertTriangle className="h-4 w-4 text-red-500" />
+                Manage incidents & respond to alerts
+              </p>
+            </div>
           </div>
+          <Button onClick={handleLogout} variant="outline" className="hover:bg-destructive hover:text-destructive-foreground">
+            <LogOut className="w-4 h-4 mr-2" /> Logout
+          </Button>
         </div>
       </header>
 
