@@ -70,7 +70,7 @@ const Dashboard = () => {
   // ✅ Normal geofence state
   const geofenceStatus = useRef<Record<string, boolean>>({});
   const geofenceCircles = useRef<Record<string, any>>({});
-  const GEOFENCE_RADIUS = 3000; // meters
+  const GEOFENCE_RADIUS = 1000; // meters
 
   // MobileShield
   const [mobileShieldActive, setMobileShieldActive] = useState(false);
