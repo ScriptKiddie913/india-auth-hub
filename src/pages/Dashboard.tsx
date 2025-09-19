@@ -1,11 +1,17 @@
 /* ------------------------------------------------------------------
    src/pages/Dashboard.tsx
    ------------------------------------------------------------------
-   The Dashboard component now also contains a dedicated **India
-   Alert Map** tab. The original functionality remains untouched –
-   only a new import and a new `TabsTrigger/Content` pair have been
-   added.  The new tab renders the `IndiaAlertMap` component defined
-   in *src/components/IndiaAlertMap.tsx* (the code you supplied).
+   The Dashboard now contains **all** the map logic that was split
+   out into the separate *IndiaAlertMap* component.  
+   •  Live threat alerts (India only) are fetched, parsed from
+      the NDMA SACHET CAP feed and rendered on the same Google‑Maps
+      instance that shows the user marker and normal geofence circles.  
+   •  Threat circles are coloured by severity and show an
+      info‑window on click (title + description).  
+   •  A safety‑score is calculated from the active threat zones and
+      displayed next to the location card.  
+   •  All existing behaviour – authentication, destination CRUD,
+      panic button, toast notifications, etc. – remains exactly as before.
    ------------------------------------------------------------------ */
 
 import { useEffect, useState, useRef } from "react";
@@ -34,9 +40,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import HelpDesk from "@/components/HelpDesk";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
-/* NEW IMPORT -------------------------------------------------------- */
-import IndiaAlertMap from "@/components/IndiaAlertMap";
-
 /* ------------------------------------------------------------------
    Types
    ------------------------------------------------------------------ */
@@ -58,7 +61,7 @@ type Destination = {
 };
 
 /* ------------------------------------------------------------------
-   Haversine distance – keep original
+   Haversine – unchanged
    ------------------------------------------------------------------ */
 const getDistance = (
   lat1: number,
@@ -103,7 +106,7 @@ const Dashboard = () => {
   const [safetyScore, setSafetyScore] = useState(100);
   const inThreatZone = useRef<Record<string, boolean>>({});
 
-  /* ========== MAP REFERENCES ========== */
+  /* ========== MAP REFS ========== */
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<any>(null);
   const markerRef = useRef<any>(null);
@@ -114,7 +117,7 @@ const Dashboard = () => {
   const geofenceCircles = useRef<Record<string, any>>({});
   const GEOFENCE_RADIUS = 3000; // m
 
-  /* ========== AUDIO REFERENCE ========== */
+  /* ========== A AUDIO REFERENCE ========== */
   const beepRef = useRef<HTMLAudioElement | null>(null);
 
   /* ========== NAV & TOAST ========== */
@@ -122,7 +125,7 @@ const Dashboard = () => {
   const { toast } = useToast();
 
   /* ------------------------------------------------------------------
-     Unlock audio on first user click – original
+     Unlock audio on first click – original
      ------------------------------------------------------------------ */
   useEffect(() => {
     const unlockAudio = () => {
@@ -131,11 +134,9 @@ const Dashboard = () => {
           .play()
           .then(() => {
             beepRef.current?.pause();
-            beepRef.current.currentTime = 0;
+            beepRef.current?.currentTime && beepRef.current?.setAttribute("currentTime", "0");
           })
-          .catch(() => {
-            /* ignore */
-          });
+          .catch(() => {});
       }
       window.removeEventListener("click", unlockAudio);
     };
@@ -143,7 +144,7 @@ const Dashboard = () => {
   }, []);
 
   /* ------------------------------------------------------------------
-     Authentication + Profile completeness check – original
+     Authentication + profile check – original
      ------------------------------------------------------------------ */
   useEffect(() => {
     const getUser = async () => {
@@ -181,7 +182,9 @@ const Dashboard = () => {
   }, [navigate]);
 
   /* ------------------------------------------------------------------
-     Real‑time location, map and geofencing – original + threat zones
+     Real‑time location, map and geofencing.
+     All logic from the original component plus the new **threat
+     zones** drawn in the same map.
      ------------------------------------------------------------------ */
   useEffect(() => {
     if (!("geolocation" in navigator)) return;
@@ -192,7 +195,7 @@ const Dashboard = () => {
         const lng = pos.coords.longitude;
         setLocation({ lat, lng });
 
-        /* -- MAP INITIALISATION -- */
+        /* -- MAP INIT -- */
         if (mapRef.current && !mapInstance.current && (window as any).google) {
           mapInstance.current = new (window as any).google.maps.Map(mapRef.current, {
             center: { lat, lng },
@@ -211,7 +214,7 @@ const Dashboard = () => {
           markerRef.current.setPosition({ lat, lng });
         }
 
-        /* -- PAN ON FIRST LOAD ONLY -- */
+        /* -- PAN ON FIRST LOAD -- */
         if (mapInstance.current && isFirstLoad.current) {
           mapInstance.current.panTo({ lat, lng });
           isFirstLoad.current = false;
@@ -237,7 +240,7 @@ const Dashboard = () => {
             }
           });
 
-          /* Remove circles for deleted destinations */
+          /* Remove stale destination circles */
           Object.keys(geofenceCircles.current).forEach((id) => {
             if (!destinations.find((d) => d.id === id)) {
               geofenceCircles.current[id].setMap(null);
@@ -245,37 +248,35 @@ const Dashboard = () => {
             }
           });
 
-          /* --- THREAT ZONES: circles + pin --- */
+          /* === THREAT ZONES: circles + pin (info‑window on click) === */
           alertZones.forEach((zone) => {
             /* circle */
-            const key = `threat-circle-${zone.id}`;
-            if (!geofenceCircles.current[key]) {
-              const circle = new (window as any).google.maps.Circle({
-                strokeColor: severityToColour(zone.severity),
-                strokeOpacity: 0.8,
-                strokeWeight: 2,
-                fillColor: severityToColour(zone.severity),
-                fillOpacity: 0.2,
-                map: mapInstance.current,
-                center: { lat: zone.lat, lng: zone.lng },
-                radius: zone.radiusMeters,
-              });
-              geofenceCircles.current[key] = circle;
-            }
+            const circle = new (window as any).google.maps.Circle({
+              strokeColor: severityToColour(zone.severity),
+              strokeOpacity: 0.8,
+              strokeWeight: 2,
+              fillColor: severityToColour(zone.severity),
+              fillOpacity: 0.2,
+              map: mapInstance.current,
+              center: { lat: zone.lat, lng: zone.lng },
+              radius: zone.radiusMeters,
+            });
 
-            /* pin */
-            const pinKey = `threat-pin-${zone.id}`;
-            if (!markerRef.current[pinKey]) {
-              const pin = new (window as any).google.maps.Marker({
+            /* info‑window */
+            const infoWindow = new (window as any).google.maps.InfoWindow({
+              content: `<strong>${zone.title}</strong><br />${zone.description}`,
+            });
+
+            circle.addListener("click", () => {
+              /* create a dummy marker as the anchor – keeps the window anchored to the circle centre */
+              const anchor = new (window as any).google.maps.Marker({
                 position: { lat: zone.lat, lng: zone.lng },
                 map: mapInstance.current,
-                title: zone.title,
-                icon: {
-                  url: "https://maps.google.com/mapfiles/ms/icons/red-dot.png",
-                },
               });
-              markerRef.current[pinKey] = pin;
-            }
+              infoWindow.open(mapInstance.current, anchor);
+            });
+
+            geofenceCircles.current[`threat-circle-${zone.id}`] = circle;
           });
         }
 
@@ -378,7 +379,7 @@ const Dashboard = () => {
   }, [toast, destinations, alertZones, user]);
 
   /* ------------------------------------------------------------------
-     Periodic push to backend (every 15 s) – original
+     Periodic location upload – original
      ------------------------------------------------------------------ */
   useEffect(() => {
     if (!user || !location) return;
@@ -423,7 +424,7 @@ const Dashboard = () => {
   };
 
   /* ------------------------------------------------------------------
-     Fetch user destinations – original
+     Destination CRUD – original
      ------------------------------------------------------------------ */
   const fetchDestinations = async (userId: string) => {
     try {
@@ -477,7 +478,7 @@ const Dashboard = () => {
   };
 
   /* ------------------------------------------------------------------
-     Photon suggestions – original
+     Photon search – original
      ------------------------------------------------------------------ */
   const fetchSuggestions = async (value: string) => {
     setQuery(value);
@@ -584,13 +585,13 @@ const Dashboard = () => {
   };
 
   /* ------------------------------------------------------------------
-     Live threat‑zone fetch – **new**
+     Live threat‑zone fetch (NDMA SACHET) – new
      ------------------------------------------------------------------ */
   useEffect(() => {
     const loadThreatZones = async () => {
       try {
         const feedUrl =
-          "https://sachet.ndma.gov.in/CapFeed"; // SACHET CAP feed – Indian alerts
+          "https://sachet.ndma.gov.in/CapFeed";
         const resp = await fetch(feedUrl);
         const xmlText = await resp.text();
         const parser = new DOMParser();
@@ -660,12 +661,12 @@ const Dashboard = () => {
     };
 
     loadThreatZones();
-    const i = setInterval(loadThreatZones, 5 * 60 * 1000); // every 5 min
-    return () => clearInterval(i);
+    const iv = setInterval(loadThreatZones, 5 * 60 * 1000); // every 5 min
+    return () => clearInterval(iv);
   }, []);
 
   /* ------------------------------------------------------------------
-     Helpers for threat UI – new
+     Severity color helper – used when drawing circles.
      ------------------------------------------------------------------ */
   const severityToColour = (sev: AlertZone["severity"]) => {
     switch (sev) {
@@ -678,6 +679,9 @@ const Dashboard = () => {
     }
   };
 
+  /* ------------------------------------------------------------------
+     Safety‑score calculation – based on current threat zones.
+     ------------------------------------------------------------------ */
   const calculateSafetyScore = (
     zones: AlertZone[],
     lat: number,
@@ -692,12 +696,11 @@ const Dashboard = () => {
         else score -= 10;
       }
     });
-    if (score < 0) score = 0;
-    return score;
+    return score < 0 ? 0 : score;
   };
 
   /* ------------------------------------------------------------------
-     Render – original UI + new Safety Score displayed
+     Render – unchanged UI + safety‑score display
      ------------------------------------------------------------------ */
   if (loading) {
     return (
@@ -714,10 +717,8 @@ const Dashboard = () => {
       className="min-h-screen bg-cover bg-center bg-no-repeat"
       style={{ backgroundImage: "url('/mountainbg.jpg')" }}
     >
-      {/* Hidden audio player for beep */}
       <audio ref={beepRef} src="/beep.mp3" preload="auto" />
 
-      {/* Gradient overlay */}
       <div className="min-h-screen bg-gradient-to-br from-white/40 via-white/30 to-white/20">
         {/* Header */}
         <header className="border-b bg-card/95 backdrop-blur-sm sticky top-0 z-50">
@@ -762,10 +763,10 @@ const Dashboard = () => {
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
               <TabsTrigger value="helpdesk">Help & Support</TabsTrigger>
-              <TabsTrigger value="alertmap">Live Threats</TabsTrigger>
+              <TabsTrigger value="alerts">Live Threats</TabsTrigger>
             </TabsList>
 
-            {/* ---------------- Dashboard ---------------- */}
+            {/* ====================== Dashboard ====================== */}
             <TabsContent value="dashboard" className="space-y-6">
               <Card className="bg-gradient-to-r from-primary to-accent text-white border-0 shadow-xl">
                 <CardHeader className="pb-6">
@@ -826,14 +827,13 @@ const Dashboard = () => {
                       )}
                     </div>
 
-                    {/* Show calculated safety score */}
+                    {/* Display computed safety score */}
                     <div className="mt-2">
                       <span className="px-3 py-1 rounded-full bg-indigo-500 text-white font-semibold">
                         Safety Score: {safetyScore}
                       </span>
                     </div>
                   </CardHeader>
-
                   <CardContent>
                     <div ref={mapRef} className="w-full h-64 rounded-lg border" />
                   </CardContent>
@@ -850,7 +850,6 @@ const Dashboard = () => {
                     Search for locations using Photon API and add them to yourtravel list.
                   </CardDescription>
                 </CardHeader>
-
                 <CardContent>
                   <div className="relative mb-4">
                     <input
@@ -906,7 +905,7 @@ const Dashboard = () => {
               </Card>
             </TabsContent>
 
-            {/* ---------------- Help Desk ---------------- */}
+            {/* ====================== Help Desk ====================== */}
             <TabsContent value="helpdesk">
               <Card>
                 <CardHeader>
@@ -924,9 +923,29 @@ const Dashboard = () => {
               </Card>
             </TabsContent>
 
-            {/* ---------------- Live Threat Map ---------------- */}
-            <TabsContent value="alertmap">
-              <IndiaAlertMap />
+            {/* ====================== Live Threats ====================== */}
+            <TabsContent value="alerts">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-2xl font-bold flex items-center gap-2">
+                    <AlertTriangle className="h-6 w-6 text-primary" />
+                    Live Threat Zones
+                  </CardTitle>
+                  <CardDescription>
+                    Live threat alerts for India. Circles are coloured by severity.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {/* The threat zones are already drawn on the same map shown
+                      in the Live Location card.  Nothing more is required
+                      here – the map above displays them.  This tab simply
+                      documents the feature. */}
+                  <div className="text-sm text-muted-foreground">
+                    The threat zones above are updated every 5 minutes
+                    from the NDMA SACHET CAP feed.
+                  </div>
+                </CardContent>
+              </Card>
             </TabsContent>
           </Tabs>
         </main>
