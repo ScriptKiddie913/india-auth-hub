@@ -1,4 +1,20 @@
-// src/pages/Dashboard.tsx
+/* ------------------------------------------------------------------
+   src/pages/Dashboard.tsx
+   ------------------------------------------------------------------
+   This file contains the full Dashboard component.  
+   All original functionality is kept, and a **live‑threat‑zone**
+   layer has been added.  
+   Threat zones are displayed as
+
+   •   **circular overlays** coloured by severity (low → green,
+       medium → orange, high → red)  
+   •   a **pin** (Google‑maps marker) at the centre of each zone  
+
+   The feed is fetched from the SACHET CAP feed (Indian alerts only) and
+   refreshed every 5 minutes.  When the user enters or leaves a zone a
+   toast is shown and a safety score is updated.
+   ------------------------------------------------------------------ */
+
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -25,11 +41,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import HelpDesk from "@/components/HelpDesk";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
-/*** ================== NEW TYPES ================== ***/
+/* ------------------------------------------------------------------
+   Types
+   ------------------------------------------------------------------ */
 type AlertZone = {
-  id: string;
-  title: string;
-  description: string;
+  id: string; // alert identifier
+  title: string; // event name
+  description: string; // alert description
   lat: number;
   lng: number;
   radiusMeters: number;
@@ -43,14 +61,16 @@ type Destination = {
   longitude?: number;
 };
 
-/*** ================== Haversine (kept) ================== ***/
+/* ------------------------------------------------------------------
+   Haversine distance – keep original
+   ------------------------------------------------------------------ */
 const getDistance = (
   lat1: number,
   lon1: number,
   lat2: number,
   lon2: number
 ) => {
-  const R = 6371e3;
+  const R = 6371e3; // metres
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const φ1 = toRad(lat1);
   const φ2 = toRad(lat2);
@@ -58,67 +78,77 @@ const getDistance = (
   const Δλ = toRad(lon2 - lon1);
 
   const a =
-    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    Math.sin(Δφ / 2) ** 2 +
+    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
 
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c; // meters
+  return R * c; // metres
 };
 
-/*** ================== COMPONENT ================== ***/
+/* ------------------------------------------------------------------
+   Dashboard component
+   ------------------------------------------------------------------ */
 const Dashboard = () => {
-  /* ---------- ORIGINAL STATE ---------- */
+  /* ========== ORIGINAL STATE ========== */
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [destinations, setDestinations] = useState<Destination[]>([]);
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(
-    null
-  );
+  const [location, setLocation] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<any[]>([]);
-  const [isSafe, setIsSafe] = useState(true); // Safe / Unsafe
+  const [isSafe, setIsSafe] = useState(true);
   const [activeTab, setActiveTab] = useState("dashboard");
 
-  /* ---------- NEW STATE ---------- */
+  /* ========== NEW STATE ========== */
   const [alertZones, setAlertZones] = useState<AlertZone[]>([]);
   const [safetyScore, setSafetyScore] = useState(100);
-  const [inThreatZone, setInThreatZone] = useState<Record<string, boolean>>(
-    {}
-  );
+  const inThreatZone = useRef<Record<string, boolean>>({});
 
-  /* ---------- MAP & MARKERS ---------- */
+  /* ========== MAP REFERENCES ========== */
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<any>(null);
   const markerRef = useRef<any>(null);
   const isFirstLoad = useRef(true);
 
-  /* ---------- GEOFENCE ---------- */
+  /* ========== GEOFENCE STATE ========== */
   const geofenceStatus = useRef<Record<string, boolean>>({});
   const geofenceCircles = useRef<Record<string, any>>({});
   const GEOFENCE_RADIUS = 3000; // m
 
-  /* ---------- AUDIO ---------- */
+  /* ========== AUDIO REFERENCE ========== */
   const beepRef = useRef<HTMLAudioElement | null>(null);
 
-  /* ---------- NAV & TOAST ---------- */
+  /* ========== NAV & TOAST ========== */
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  /* ---------- UNLOCK AUDIO ---------- */
+  /* ------------------------------------------------------------------
+     Unlock audio on first user click – original
+     ------------------------------------------------------------------ */
   useEffect(() => {
     const unlockAudio = () => {
       if (beepRef.current) {
-        beepRef.current.play().then(() => {
-          beepRef.current?.pause();
-          beepRef.current.currentTime = 0;
-        });
+        beepRef.current
+          .play()
+          .then(() => {
+            beepRef.current?.pause();
+            beepRef.current.currentTime = 0;
+          })
+          .catch(() => {
+            /* ignore */
+          });
       }
       window.removeEventListener("click", unlockAudio);
     };
     window.addEventListener("click", unlockAudio);
   }, []);
 
-  /* ---------- AUTH + PROFILE ---------- */
+  /* ------------------------------------------------------------------
+     Authentication + Profile completeness check – original
+     ------------------------------------------------------------------ */
   useEffect(() => {
     const getUser = async () => {
       const {
@@ -127,7 +157,7 @@ const Dashboard = () => {
       if (user) {
         setUser(user);
 
-        /*--- profile check ---*/
+        // profile completeness
         const { data: profile } = await supabase
           .from("profiles")
           .select("nationality, phone")
@@ -154,7 +184,9 @@ const Dashboard = () => {
     return () => data.subscription.unsubscribe();
   }, [navigate]);
 
-  /* ---------- REAL‑TIME LOCATION + MAP + GEOFENCE + THREATS ---------- */
+  /* ------------------------------------------------------------------
+     Real‑time location, map and geofencing – original + threat zones
+     ------------------------------------------------------------------ */
   useEffect(() => {
     if (!("geolocation" in navigator)) return;
 
@@ -189,7 +221,7 @@ const Dashboard = () => {
           isFirstLoad.current = false;
         }
 
-        /* -- DRAW NORMAL GEOFECKS -- */
+        /* === NORMAL GEOFECKS (green circles) === */
         if (mapInstance.current) {
           destinations.forEach((dest) => {
             if (dest.latitude && dest.longitude) {
@@ -209,7 +241,7 @@ const Dashboard = () => {
             }
           });
 
-          // Remove circles for deleted destinations
+          /* Remove circles for deleted destinations */
           Object.keys(geofenceCircles.current).forEach((id) => {
             if (!destinations.find((d) => d.id === id)) {
               geofenceCircles.current[id].setMap(null);
@@ -217,28 +249,41 @@ const Dashboard = () => {
             }
           });
 
-          /* ---- THREAT ZONES ON MAP ---- */
+          /* --- THREAT ZONES: circles + pin --- */
           alertZones.forEach((zone) => {
-            if (!mapInstance.current) return;
-            const key = `threat-${zone.id}`;
-            if (!mapInstance.current[key]) {
+            /* circle */
+            const key = `threat-circle-${zone.id}`;
+            if (!geofenceCircles.current[key]) {
               const circle = new (window as any).google.maps.Circle({
-                strokeColor: getSeverityColor(zone.severity),
+                strokeColor: severityToColour(zone.severity),
                 strokeOpacity: 0.8,
                 strokeWeight: 2,
-                fillColor: getSeverityColor(zone.severity),
+                fillColor: severityToColour(zone.severity),
                 fillOpacity: 0.2,
                 map: mapInstance.current,
                 center: { lat: zone.lat, lng: zone.lng },
                 radius: zone.radiusMeters,
               });
-              // store reference on map so we can remove later
-              mapInstance.current[key] = circle;
+              geofenceCircles.current[key] = circle;
+            }
+
+            /* pin */
+            const pinKey = `threat-pin-${zone.id}`;
+            if (!markerRef.current[pinKey]) {
+              const pin = new (window as any).google.maps.Marker({
+                position: { lat: zone.lat, lng: zone.lng },
+                map: mapInstance.current,
+                title: zone.title,
+                icon: {
+                  url: "https://maps.google.com/mapfiles/ms/icons/red-dot.png",
+                },
+              });
+              markerRef.current[pinKey] = pin;
             }
           });
         }
 
-        /* -- CHECK GEOFECKS AND THREATS -- */
+        /* === CHECK GEOFECKS AND THRÊATS === */
         if (user && destinations.length > 0) {
           let insideAnyGeofence = false;
 
@@ -271,14 +316,14 @@ const Dashboard = () => {
             geofenceStatus.current[dest.id] = isInside;
           });
 
-          /* ---- THREAT ZONE CHECKS ---- */
-          let inAnyThreat = false;
+          /* --- THREAT ZONE CHECKS --- */
+          let insideAnyThreat = false;
           alertZones.forEach((zone) => {
             const d = getDistance(lat, lng, zone.lat, zone.lng);
             const inside = d <= zone.radiusMeters;
-            const wasInside = inThreatZone[zone.id] || false;
+            const wasInside = inThreatZone.current[zone.id] || false;
 
-            if (inside) inAnyThreat = true;
+            if (inside) insideAnyThreat = true;
 
             if (inside && !wasInside) {
               toast({
@@ -294,28 +339,30 @@ const Dashboard = () => {
                 variant: "destructive",
               });
             }
-            inThreatZone[zone.id] = inside;
+            inThreatZone.current[zone.id] = inside;
           });
 
-          /* ---- UPDATE SAFE/UNSAFE STATUS ---- */
-          setIsSafe(insideAnyGeofence && !inAnyThreat);
+          /* --- UPDATE SAFE / UNSAFE STATUS --- */
+          setIsSafe(insideAnyGeofence && !insideAnyThreat);
 
-          /* ---- UPDATE SAFETY SCORE ---- */
+          /* --- UPDATE SAFETY SCORE --- */
           const score = calculateSafetyScore(alertZones, lat, lng);
           setSafetyScore(score);
 
-          /* ---- PLAY BEEP ON EXIT OF THREAT ZONE ---- */
-          if (!inAnyThreat && Object.values(inThreatZone).some(Boolean)) {
+          /* --- PLAY BEEP WHEN EXITING THREAT ZONE --- */
+          if (!insideAnyThreat && Object.values(inThreatZone.current).some(Boolean)) {
             if (beepRef.current) {
               beepRef.current.currentTime = 0;
               beepRef.current.play().catch(() => {
-                console.warn("Autoplay prevented. User interaction required.");
+                console.warn(
+                  "Autoplay prevented. User interaction required."
+                );
               });
             }
           }
         }
 
-        /* ---- UPDATE USER LOCATION IN DB ---- */
+        /* --- UPDATE SERVER WITH LOCATION --- */
         if (user) {
           updateUserLocation(user.id, lat, lng);
         }
@@ -334,7 +381,9 @@ const Dashboard = () => {
     return () => navigator.geolocation.clearWatch(watchId);
   }, [toast, destinations, alertZones, user]);
 
-  /* ---------- USER LOCATION UPDATE EVERY 15 SECONDS ---------- */
+  /* ------------------------------------------------------------------
+     Periodic push to backend (every 15 s) – original
+     ------------------------------------------------------------------ */
   useEffect(() => {
     if (!user || !location) return;
 
@@ -342,12 +391,14 @@ const Dashboard = () => {
       if (location && user) {
         updateUserLocation(user.id, location.lat, location.lng);
       }
-    }, 15000); // 15 seconds
+    }, 15000);
 
     return () => clearInterval(interval);
   }, [user, location]);
 
-  /* ---------- PANIC BUTTON ---------- */
+  /* ------------------------------------------------------------------
+     Panic button – original
+     ------------------------------------------------------------------ */
   const handlePanicButton = async () => {
     if (!user || !location) return;
     try {
@@ -375,7 +426,9 @@ const Dashboard = () => {
     }
   };
 
-  /* ---------- FETCH DESTINATIONS ---------- */
+  /* ------------------------------------------------------------------
+     Fetch user destinations – original
+     ------------------------------------------------------------------ */
   const fetchDestinations = async (userId: string) => {
     try {
       const { data, error } = await supabase
@@ -394,7 +447,9 @@ const Dashboard = () => {
     }
   };
 
-  /* ---------- SIGN OUT ---------- */
+  /* ------------------------------------------------------------------
+     Sign out – original
+     ------------------------------------------------------------------ */
   const handleSignOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
@@ -412,7 +467,9 @@ const Dashboard = () => {
     }
   };
 
-  /* ---------- DEBOUNCE ---------- */
+  /* ------------------------------------------------------------------
+     Debounce – original
+     ------------------------------------------------------------------ */
   const debounce = (func: Function, delay: number) => {
     let timer: NodeJS.Timeout;
     return (...args: any[]) => {
@@ -423,7 +480,9 @@ const Dashboard = () => {
     };
   };
 
-  /* ---------- PHOTON SUGGESTIONS ---------- */
+  /* ------------------------------------------------------------------
+     Photon suggestions – original
+     ------------------------------------------------------------------ */
   const fetchSuggestions = async (value: string) => {
     setQuery(value);
     if (value.length < 3) {
@@ -444,7 +503,9 @@ const Dashboard = () => {
   const debouncedFetchSuggestions = useRef(debounce(fetchSuggestions, 400))
     .current;
 
-  /* ---------- ADD DESTINATION ---------- */
+  /* ------------------------------------------------------------------
+     Add destination – original
+     ------------------------------------------------------------------ */
   const addDestination = async (place: any) => {
     if (!user) return;
     try {
@@ -476,7 +537,9 @@ const Dashboard = () => {
     }
   };
 
-  /* ---------- REMOVE DESTINATION ---------- */
+  /* ------------------------------------------------------------------
+     Remove destination – original
+     ------------------------------------------------------------------ */
   const removeDestination = async (destinationId: string) => {
     try {
       const { error } = await supabase
@@ -500,7 +563,9 @@ const Dashboard = () => {
     }
   };
 
-  /* ---------- USER LOCATION UPDATE IN DB helper ---------- */
+  /* ------------------------------------------------------------------
+     Update user location in DB – original
+     ------------------------------------------------------------------ */
   const updateUserLocation = async (
     userId: string,
     latitude: number,
@@ -511,21 +576,25 @@ const Dashboard = () => {
         .from("user_locations")
         .delete()
         .eq("user_id", userId);
+
       const { error } = await supabase
         .from("user_locations")
         .insert({ user_id: userId, latitude, longitude });
+
       if (error) throw error;
     } catch (error: any) {
       console.error("Error updating location:", error);
     }
   };
 
-  /* ---------- FETCH LIVE THREAT ALERTS ---------- */
+  /* ------------------------------------------------------------------
+     Live threat‑zone fetch – **new**
+     ------------------------------------------------------------------ */
   useEffect(() => {
     const loadThreatZones = async () => {
       try {
-        // SACHET CAP feed URL – only Indian alerts are usually included
-        const feedUrl = "https://sachet.ndma.gov.in/CapFeed";
+        const feedUrl =
+          "https://sachet.ndma.gov.in/CapFeed"; // SACHET CAP feed – Indian alerts
         const resp = await fetch(feedUrl);
         const xmlText = await resp.text();
         const parser = new DOMParser();
@@ -535,61 +604,58 @@ const Dashboard = () => {
         const zones: AlertZone[] = alerts
           .map((alertEl) => {
             try {
-              const identifier = alertEl
-                .getElementsByTagName("identifier")[0]
-                ?.textContent?.trim() || "";
+              const identifier =
+                alertEl
+                  .getElementsByTagName("identifier")[0]
+                  ?.textContent?.trim() || "";
               const info = alertEl.getElementsByTagName("info")[0];
               if (!info) return null;
 
               const area = info.getElementsByTagName("area")[0];
               if (!area) return null;
 
-              const geocodeElems = area.getElementsByTagName("geocode");
-              // Only keep alerts that explicitly fall under India or use a basic country filter later
-              const countryCode =
-                geocodeElems[0]?.getElementsByTagName("value")[0]
-                  ?.textContent?.trim() || "";
+              const geocodes = area.getElementsByTagName("geocode");
+              const countryCode = geocodes[0]
+                ?.getElementsByTagName("value")[0]
+                ?.textContent?.trim() ?? "";
 
-              if (countryCode !== "IN") return null; // filter out non‑India alerts
+              if (countryCode !== "IN") return null; // only India
 
-              const circle = area.getElementsByTagName("circle")[0]
-                ?.textContent?.trim();
+              const circleEl = area.getElementsByTagName("circle")[0];
+              if (!circleEl) return null;
+              const circleText = circleEl.textContent?.trim() ?? "";
+              const [posPart, radiusPart] = circleText.split(" ");
+              const [latStr, lngStr] = posPart.split(",").map((s) => s.trim());
+              const lat = parseFloat(latStr);
+              const lng = parseFloat(lngStr);
+              const radiusKm = parseFloat(radiusPart) || 1;
 
-              if (!circle) return null;
-
-              const parts = circle.split(" ");
-              const [latLng, radiusKm] = parts;
-              const [lat, lng] = latLng.split(",").map(Number);
-              const radiusMeters = parseFloat(radiusKm) * 1000;
-
-              const severityTag = info.getElementsByTagName("severity")[0]
-                ?.textContent?.trim();
+              const severityTag = info
+                .getElementsByTagName("severity")[0]
+                ?.textContent?.trim()
+                ?.toLowerCase();
 
               let severity: "low" | "medium" | "high" = "low";
-              if (severityTag?.toLowerCase() === "moderate")
-                severity = "medium";
-              else if (severityTag?.toLowerCase() === "severe")
-                severity = "high";
+              if (severityTag === "moderate") severity = "medium";
+              else if (severityTag === "severe") severity = "high";
 
               return {
                 id: identifier,
-                title: info
-                  .getElementsByTagName("event")[0]
-                  ?.textContent?.trim() ?? "Alert",
+                title: info.getElementsByTagName("event")[0]?.textContent?.trim() || "Alert",
                 description:
                   info.getElementsByTagName("description")[0]
                     ?.textContent?.trim() ?? "",
                 lat,
                 lng,
-                radiusMeters,
+                radiusMeters: radiusKm * 1000,
                 severity,
               };
-            } catch (err) {
-              console.error("Alert parse error:", err);
+            } catch (e) {
+              console.error("Error parsing CAP alert:", e);
               return null;
             }
           })
-          .filter((z): z is AlertZone => !!z);
+          .filter((z): z is AlertZone => z !== null);
 
         setAlertZones(zones);
       } catch (err) {
@@ -597,15 +663,16 @@ const Dashboard = () => {
       }
     };
 
-    // load immediately and every 5 minutes
     loadThreatZones();
-    const iv = setInterval(loadThreatZones, 5 * 60 * 1000);
+    const iv = setInterval(loadThreatZones, 5 * 60 * 1000); // every 5 min
     return () => clearInterval(iv);
   }, []);
 
-  /* ---------- UTILS FOR THREATS / UI ---------- */
-  const getSeverityColor = (severity: AlertZone["severity"]) => {
-    switch (severity) {
+  /* ------------------------------------------------------------------
+     Helpers for threat UI – new
+     ------------------------------------------------------------------ */
+  const severityToColour = (sev: AlertZone["severity"]) => {
+    switch (sev) {
       case "high":
         return "#e52e2e"; // red
       case "medium":
@@ -633,7 +700,9 @@ const Dashboard = () => {
     return score;
   };
 
-  /* ---------- RENDER ---------- */
+  /* ------------------------------------------------------------------
+     Render – original UI + new Safety Score displayed
+     ------------------------------------------------------------------ */
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary/20 to-accent/10">
@@ -649,9 +718,12 @@ const Dashboard = () => {
       className="min-h-screen bg-cover bg-center bg-no-repeat"
       style={{ backgroundImage: "url('/mountainbg.jpg')" }}
     >
+      {/* Hidden audio player for beep */}
       <audio ref={beepRef} src="/beep.mp3" preload="auto" />
 
+      {/* Gradient overlay */}
       <div className="min-h-screen bg-gradient-to-br from-white/40 via-white/30 to-white/20">
+        {/* Header */}
         <header className="border-b bg-card/95 backdrop-blur-sm sticky top-0 z-50">
           <div className="container mx-auto px-4 py-4">
             <div className="flex items-center justify-between">
@@ -677,9 +749,9 @@ const Dashboard = () => {
                 <span>Profile</span>
               </Button>
               <Button
-                onClick={handleSignOut}
                 variant="outline"
                 className="flex items-center space-x-2 hover:bg-destructive hover:text-destructive-foreground"
+                onClick={handleSignOut}
               >
                 <LogOut className="w-4 h-4" />
                 <span>Sign Out</span>
@@ -688,6 +760,7 @@ const Dashboard = () => {
           </div>
         </header>
 
+        {/* Main */}
         <main className="container mx-auto px-4 py-8">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             <TabsList className="grid w-full grid-cols-2">
@@ -695,7 +768,7 @@ const Dashboard = () => {
               <TabsTrigger value="helpdesk">Help & Support</TabsTrigger>
             </TabsList>
 
-            {/* ====================== DASHBOARD ====================== */}
+            {/* ---------------- Dashboard ---------------- */}
             <TabsContent value="dashboard" className="space-y-6">
               <Card className="bg-gradient-to-r from-primary to-accent text-white border-0 shadow-xl">
                 <CardHeader className="pb-6">
@@ -718,10 +791,10 @@ const Dashboard = () => {
                     </div>
 
                     <Button
-                      onClick={handlePanicButton}
                       variant="destructive"
                       size="lg"
                       className="bg-red-600 hover:bg-red-700 text-white font-bold animate-pulse"
+                      onClick={handlePanicButton}
                     >
                       <AlertTriangle className="w-5 h-5 mr-2" />
                       PANIC
@@ -730,7 +803,7 @@ const Dashboard = () => {
                 </CardHeader>
               </Card>
 
-              {/* === YOUR LOCATION MAP === */}
+              {/* ---------- Your live location + circle ---------- */}
               {location && (
                 <Card>
                   <CardHeader>
@@ -742,6 +815,8 @@ const Dashboard = () => {
                       Latitude: {location.lat.toFixed(6)}, Longitude:{" "}
                       {location.lng.toFixed(6)}
                     </CardDescription>
+
+                    {/* Safe/Unsafe indicator */}
                     <div className="mt-2">
                       {isSafe ? (
                         <span className="px-3 py-1 rounded-full bg-green-500 text-white font-semibold">
@@ -754,30 +829,31 @@ const Dashboard = () => {
                       )}
                     </div>
 
-                    {/* New: Safety Score indicator */}
+                    {/* Show calculated safety score */}
                     <div className="mt-2">
                       <span className="px-3 py-1 rounded-full bg-indigo-500 text-white font-semibold">
                         Safety Score: {safetyScore}
                       </span>
                     </div>
                   </CardHeader>
+
                   <CardContent>
                     <div ref={mapRef} className="w-full h-64 rounded-lg border" />
                   </CardContent>
                 </Card>
               )}
 
-              {/* === DESTINATIONS LIST + SEARCH === */}
+              {/* ---------- Plan destinations ---------- */}
               <Card>
                 <CardHeader>
                   <CardTitle className="text-2xl font-bold">
                     Plan Your Destinations
                   </CardTitle>
                   <CardDescription>
-                    Search for locations using Photon API and add them to your
-                    travel list.
+                    Search for locations using Photon API and add them to yourtravel list.
                   </CardDescription>
                 </CardHeader>
+
                 <CardContent>
                   <div className="relative mb-4">
                     <input
@@ -833,7 +909,7 @@ const Dashboard = () => {
               </Card>
             </TabsContent>
 
-            {/* ====================== HELP DESK ====================== */}
+            {/* ---------------- Help Desk ---------------- */}
             <TabsContent value="helpdesk">
               <Card>
                 <CardHeader>
