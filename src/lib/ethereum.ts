@@ -10,7 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Toast } from "@/hooks/use-toast";
 
 /* ---------------- Contract config ---------------- */
-const CONTRACT_ADDRESS = "0xYOUR_CONTRACT_ADDRESS"; // <-- replace
+const CONTRACT_ADDRESS = "0x0d0A38A501B2AD98248eD7E17b6025D9a55F5044"; // <-- replace
 const CONTRACT_ABI = [
   {
     inputs: [{ internalType: "bytes32", name: "uniqueId", type: "bytes32" }],
