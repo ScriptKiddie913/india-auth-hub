@@ -18,7 +18,6 @@ import {
   Navigation,
   AlertTriangle,
   HelpCircle,
-  Phone,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import HelpDesk from "@/components/HelpDesk";
@@ -57,12 +56,10 @@ const Dashboard = () => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [destinations, setDestinations] = useState<Destination[]>([]);
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(
-    null
-  );
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<any[]>([]);
-  const [isSafe, setIsSafe] = useState(true); // ✅ Safe / Unsafe status
+  const [isSafe, setIsSafe] = useState(true);
   const [activeTab, setActiveTab] = useState("dashboard");
 
   const mapRef = useRef<HTMLDivElement>(null);
@@ -70,7 +67,7 @@ const Dashboard = () => {
   const markerRef = useRef<any>(null);
   const isFirstLoad = useRef(true);
 
-  // ✅ Geofence state
+  // ✅ Normal geofence state
   const geofenceStatus = useRef<Record<string, boolean>>({});
   const geofenceCircles = useRef<Record<string, any>>({});
   const GEOFENCE_RADIUS = 3000; // meters
@@ -78,6 +75,7 @@ const Dashboard = () => {
   // MobileShield
   const [mobileShieldActive, setMobileShieldActive] = useState(false);
   const shieldCircleRef = useRef<any>(null);
+  const MOBILE_SHIELD_RADIUS = 200; // meters (diameter = 400m)
 
   // ✅ Beep sound
   const beepRef = useRef<HTMLAudioElement | null>(null);
@@ -85,7 +83,9 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // ✅ Unlock audio after first user click
+  /* ==========================
+     1️⃣ Unlock audio on first click
+  ========================== */
   useEffect(() => {
     const unlockAudio = () => {
       if (beepRef.current) {
@@ -99,7 +99,9 @@ const Dashboard = () => {
     window.addEventListener("click", unlockAudio);
   }, []);
 
-  // ✅ Authentication and profile check
+  /* ==========================
+     2️⃣ Authentication and profile check
+  ========================== */
   useEffect(() => {
     const getUser = async () => {
       const {
@@ -115,7 +117,6 @@ const Dashboard = () => {
           .eq("user_id", user.id)
           .maybeSingle();
 
-        // If user doesn't have nationality or phone, redirect to profile completion
         if (!profile || !profile.nationality || !profile.phone) {
           navigate("/profile-completion");
           return;
@@ -138,167 +139,171 @@ const Dashboard = () => {
     return () => data.subscription.unsubscribe();
   }, [navigate]);
 
-  // ✅ Real-time location tracking + Google Map + Geofencing
+  /* ==========================
+     3️⃣ Real‑time location + map + geofencing
+  ========================== */
   useEffect(() => {
-    if ("geolocation" in navigator) {
-      const watchId = navigator.geolocation.watchPosition(
-        async (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          setLocation({ lat, lng });
+    if (!("geolocation" in navigator)) return;
 
-          // Initialize map once
-          if (mapRef.current && !mapInstance.current && (window as any).google) {
-            mapInstance.current = new (window as any).google.maps.Map(mapRef.current, {
-              center: { lat, lng },
-              zoom: 15,
-            });
-            markerRef.current = new (window as any).google.maps.Marker({
-              position: { lat, lng },
-              map: mapInstance.current,
-              title: "You are here",
-            });
-          }
+    const watchId = navigator.geolocation.watchPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        setLocation({ lat, lng });
 
-          // Update marker
-          if (markerRef.current) {
-            markerRef.current.setPosition({ lat, lng });
-          }
-
-          // Only auto-pan on first load
-          if (mapInstance.current && isFirstLoad.current) {
-            mapInstance.current.panTo({ lat, lng });
-            isFirstLoad.current = false;
-          }
-
-          // ✅ Draw geofence circles
-          if (mapInstance.current && destinations.length) {
-            destinations.forEach((dest) => {
-              if (dest.latitude && dest.longitude) {
-                if (!geofenceCircles.current[dest.id]) {
-                  const circle = new (window as any).google.maps.Circle({
-                    strokeColor: "#00FF00",
-                    strokeOpacity: 0.8,
-                    strokeWeight: 2,
-                    fillColor: "#00FF00",
-                    fillOpacity: 0.2,
-                    map: mapInstance.current,
-                    center: { lat: dest.latitude, lng: dest.longitude },
-                    radius: GEOFENCE_RADIUS,
-                  });
-                  geofenceCircles.current[dest.id] = circle;
-                }
-              }
-            });
-
-            // Remove circles for deleted destinations
-            Object.keys(geofenceCircles.current).forEach((id) => {
-              if (!destinations.find((d) => d.id === id)) {
-                geofenceCircles.current[id].setMap(null);
-                delete geofenceCircles.current[id];
-              }
-            });
-          }
-
-          // ✅ Mobile Shield logic: create/move circle
-          if (mobileShieldActive) {
-            if (!shieldCircleRef.current && mapInstance.current) {
-              shieldCircleRef.current = new (window as any).google.maps.Circle({
-                strokeColor: "#0000ff",
-                strokeOpacity: 0.8,
-                strokeWeight: 2,
-                fillColor: "#0000ff",
-                fillOpacity: 0.2,
-                map: mapInstance.current,
-                center: { lat, lng },
-                radius: GEOFENCE_RADIUS,
-              });
-            } else if (shieldCircleRef.current) {
-              // keep user at centre
-              shieldCircleRef.current.setCenter({ lat, lng });
-            }
-          }
-
-          // ✅ Check geofences
-          if (user && destinations.length > 0) {
-            let insideAnyGeofence = false;
-
-            destinations.forEach((dest) => {
-              if (dest.latitude && dest.longitude) {
-                const distance = getDistance(
-                  lat,
-                  lng,
-                  dest.latitude,
-                  dest.longitude
-                );
-                const isInside = distance <= GEOFENCE_RADIUS;
-                const wasInside = geofenceStatus.current[dest.id] || false;
-
-                if (isInside) {
-                  insideAnyGeofence = true;
-                }
-
-                if (isInside && !wasInside) {
-                  toast({
-                    title: "📍 Geofence Entered",
-                    description: `You entered the area of ${dest.name}`,
-                  });
-                  geofenceStatus.current[dest.id] = true;
-                }
-
-                if (!isInside && wasInside) {
-                  toast({
-                    title: "🚪 Geofence Exited",
-                    description: `You left the area of ${dest.name}`,
-                    variant: "destructive",
-                  });
-
-                  // ✅ Play beep sound on exit
-                  if (beepRef.current) {
-                    beepRef.current.currentTime = 0;
-                    beepRef.current.play().catch(() => {
-                      console.warn(
-                        "Autoplay prevented. User interaction required."
-                      );
-                    });
-                  }
-
-                  geofenceStatus.current[dest.id] = false;
-                }
-              }
-            });
-
-            // ✅ Update Safe/Unsafe
-            setIsSafe(insideAnyGeofence);
-          }
-
-          // ✅ Update user location in database (replace old location)
-          if (user) {
-            updateUserLocation(user.id, lat, lng);
-          }
-        },
-        (err) => {
-          console.error("Error getting location:", err);
-          toast({
-            title: "Location Error",
-            description: err.message,
-            variant: "destructive",
+        // 3.1 Map initialization
+        if (mapRef.current && !mapInstance.current && (window as any).google) {
+          mapInstance.current = new (window as any).google.maps.Map(mapRef.current, {
+            center: { lat, lng },
+            zoom: 15,
           });
-        },
-        { enableHighAccuracy: true, maximumAge: 0 }
-      );
-      return () => navigator.geolocation.clearWatch(watchId);
-    }
+          markerRef.current = new (window as any).google.maps.Marker({
+            position: { lat, lng },
+            map: mapInstance.current,
+            title: "You are here",
+          });
+        }
+
+        // 3.2 Marker update
+        if (markerRef.current) {
+          markerRef.current.setPosition({ lat, lng });
+        }
+
+        // 3.3 Auto‑pan on first load
+        if (mapInstance.current && isFirstLoad.current) {
+          mapInstance.current.panTo({ lat, lng });
+          isFirstLoad.current = false;
+        }
+
+        // 3.4 Regular geofence circles
+        if (mapInstance.current) {
+          destinations.forEach((dest) => {
+            if (dest.latitude && dest.longitude) {
+              if (!geofenceCircles.current[dest.id]) {
+                const circle = new (window as any).google.maps.Circle({
+                  strokeColor: "#00FF00",
+                  strokeOpacity: 0.8,
+                  strokeWeight: 2,
+                  fillColor: "#00FF00",
+                  fillOpacity: 0.2,
+                  map: mapInstance.current,
+                  center: { lat: dest.latitude, lng: dest.longitude },
+                  radius: GEOFENCE_RADIUS,
+                });
+                geofenceCircles.current[dest.id] = circle;
+              }
+            }
+          });
+
+          // Remove circles for deleted destinations
+          Object.keys(geofenceCircles.current).forEach((id) => {
+            if (!destinations.find((d) => d.id === id)) {
+              geofenceCircles.current[id].setMap(null);
+              delete geofenceCircles.current[id];
+            }
+          });
+        }
+
+        // 3.5 MobileShield circle
+        if (mobileShieldActive) {
+          if (!shieldCircleRef.current && mapInstance.current) {
+            shieldCircleRef.current = new (window as any).google.maps.Circle({
+              strokeColor: "#0000ff",
+              strokeOpacity: 0.8,
+              strokeWeight: 2,
+              fillColor: "#0000ff",
+              fillOpacity: 0.2,
+              map: mapInstance.current,
+              center: { lat, lng },
+              radius: MOBILE_SHIELD_RADIUS,
+            });
+          } else if (shieldCircleRef.current) {
+            shieldCircleRef.current.setCenter({ lat, lng });
+          }
+        }
+
+        // 3.6 Geofence checks
+        if (user && destinations.length) {
+          let insideAny = false;
+
+          destinations.forEach((dest) => {
+            if (dest.latitude && dest.longitude) {
+              const distance = getDistance(
+                lat,
+                lng,
+                dest.latitude,
+                dest.longitude
+              );
+              const isInside = distance <= GEOFENCE_RADIUS;
+              const wasInside = geofenceStatus.current[dest.id] || false;
+
+              if (isInside) insideAny = true;
+
+              if (isInside && !wasInside) {
+                toast({
+                  title: "📍 Geofence Entered",
+                  description: `You entered the area of ${dest.name}`,
+                });
+                geofenceStatus.current[dest.id] = true;
+              }
+
+              if (!isInside && wasInside) {
+                toast({
+                  title: "🚪 Geofence Exited",
+                  description: `You left the area of ${dest.name}`,
+                  variant: "destructive",
+                });
+
+                // ⚠️ Beep on exit
+                if (beepRef.current) {
+                  beepRef.current.currentTime = 0;
+                  beepRef.current.play().catch(() => {
+                    console.warn(
+                      "Autoplay prevented. User interaction required."
+                    );
+                  });
+                }
+
+                geofenceStatus.current[dest.id] = false;
+              }
+            }
+          });
+
+          setIsSafe(insideAny);
+        }
+
+        // 3.7 Sync location to DB
+        if (user) {
+          updateUserLocation(user.id, lat, lng);
+        }
+      },
+      (err) => {
+        console.error("Location error:", err);
+        toast({
+          title: "Location Error",
+          description: err.message,
+          variant: "destructive",
+        });
+      },
+      { enableHighAccuracy: true, maximumAge: 0 }
+    );
+
+    return () => navigator.geolocation.clearWatch(watchId);
   }, [toast, destinations, user, mobileShieldActive]);
 
-  // ✅ Update user location (replace old location) - called every 15 seconds
+  /* ==========================
+     4️⃣ Update user location in DB
+  ========================== */
   const updateUserLocation = async (
     userId: string,
     latitude: number,
     longitude: number
   ) => {
     try {
-      await supabase.from("user_locations").delete().eq("user_id", userId);
+      await supabase
+        .from("user_locations")
+        .delete()
+        .eq("user_id", userId);
 
       const { error } = await supabase
         .from("user_locations")
@@ -309,25 +314,25 @@ const Dashboard = () => {
         });
 
       if (error) throw error;
-    } catch (error: any) {
-      console.error("Error updating location:", error);
+    } catch (err: any) {
+      console.error("Error updating location:", err);
     }
   };
 
-  // ✅ Location tracking with 15-second interval
+  /* ==========================
+     5️⃣ Periodic location sync (15 s)
+  ========================== */
   useEffect(() => {
     if (!user || !location) return;
-
-    const locationInterval = setInterval(() => {
-      if (location && user) {
-        updateUserLocation(user.id, location.lat, location.lng);
-      }
-    }, 15000); // Update every 15 seconds
-
-    return () => clearInterval(locationInterval);
+    const interval = setInterval(() => {
+      updateUserLocation(user.id, location.lat, location.lng);
+    }, 15000);
+    return () => clearInterval(interval);
   }, [user, location]);
 
-  // ✅ Panic Button Handler
+  /* ==========================
+     6️⃣ Panic button
+  ========================== */
   const handlePanicButton = async () => {
     if (!user || !location) return;
 
@@ -349,16 +354,18 @@ const Dashboard = () => {
         description: "Emergency services have been notified of your location.",
         variant: "destructive",
       });
-    } catch (error: any) {
+    } catch (err: any) {
       toast({
         title: "Error sending panic alert",
-        description: error.message,
+        description: err.message,
         variant: "destructive",
       });
     }
   };
 
-  // ✅ Fetch destinations from Supabase
+  /* ==========================
+     7️⃣ Fetch destinations
+  ========================== */
   const fetchDestinations = async (userId: string) => {
     try {
       const { data, error } = await supabase
@@ -366,18 +373,21 @@ const Dashboard = () => {
         .select("*")
         .eq("user_id", userId)
         .order("created_at", { ascending: false });
+
       if (error) throw error;
       setDestinations(data || []);
-    } catch (error: any) {
+    } catch (err: any) {
       toast({
         title: "Error fetching destinations",
-        description: error.message,
+        description: err.message,
         variant: "destructive",
       });
     }
   };
 
-  // ✅ Sign Out
+  /* ==========================
+     8️⃣ Sign‑out
+  ========================== */
   const handleSignOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
@@ -395,18 +405,20 @@ const Dashboard = () => {
     }
   };
 
-  // ✅ Debounce function
-  const debounce = (func: Function, delay: number) => {
+  /* ==========================
+     9️⃣ Debounce helper
+  ========================== */
+  const debounce = (fn: Function, delay: number) => {
     let timer: NodeJS.Timeout;
     return (...args: any[]) => {
       clearTimeout(timer);
-      timer = setTimeout(() => {
-        func(...args);
-      }, delay);
+      timer = setTimeout(() => fn(...args), delay);
     };
   };
 
-  // ✅ Fetch location suggestions from Photon API (fast + stable)
+  /* ==========================
+     🔟 Fetch location suggestions (Photon API)
+  ========================== */
   const fetchSuggestions = async (value: string) => {
     setQuery(value);
     if (value.length < 3) {
@@ -415,16 +427,12 @@ const Dashboard = () => {
     }
     try {
       const res = await fetch(
-        `https://photon.komoot.io/api/?q=${encodeURIComponent(
-          value
-        )}&limit=10`
+        `https://photon.komoot.io/api/?q=${encodeURIComponent(value)}&limit=10`
       );
       const data = await res.json();
-      if (data && data.features) {
-        setSuggestions(data.features);
-      }
-    } catch (err) {
-      console.error("Error fetching location suggestions:", err);
+      if (data && data.features) setSuggestions(data.features);
+    } catch (e) {
+      console.error("Suggestion error:", e);
     }
   };
 
@@ -432,7 +440,9 @@ const Dashboard = () => {
     debounce(fetchSuggestions, 400)
   ).current;
 
-  // ✅ Add destination
+  /* ==========================
+     🔒 Add destination
+  ========================== */
   const addDestination = async (place: any) => {
     if (!user) return;
     try {
@@ -447,6 +457,7 @@ const Dashboard = () => {
         latitude: parseFloat(coords[1]),
         longitude: parseFloat(coords[0]),
       });
+
       if (error) throw error;
       await fetchDestinations(user.id);
       setQuery("");
@@ -455,53 +466,55 @@ const Dashboard = () => {
         title: "Destination added",
         description: "Successfully added to your travel list!",
       });
-    } catch (error: any) {
+    } catch (err: any) {
       toast({
         title: "Error adding destination",
-        description: error.message,
+        description: err.message,
         variant: "destructive",
       });
     }
   };
 
-  // ✅ Remove destination
-  const removeDestination = async (destinationId: string) => {
+  /* ==========================
+     ✂️ Remove destination
+  ========================== */
+  const removeDestination = async (id: string) => {
     try {
       const { error } = await supabase
         .from("destinations")
         .delete()
-        .eq("id", destinationId);
+        .eq("id", id);
       if (error) throw error;
-      setDestinations((prev) =>
-        prev.filter((dest) => dest.id !== destinationId)
-      );
+      setDestinations((prev) => prev.filter((d) => d.id !== id));
       toast({
         title: "Destination removed",
         description: "Removed from your travel list!",
       });
-    } catch (error: any) {
+    } catch (err: any) {
       toast({
         title: "Error removing destination",
-        description: error.message,
+        description: err.message,
         variant: "destructive",
       });
     }
   };
 
-  // Mobile Shield toggle
+  /* ==========================
+     📋 Mobile Shield toggle
+  ========================== */
   const toggleMobileShield = () => {
     const newState = !mobileShieldActive;
     setMobileShieldActive(newState);
 
-    if (!newState) {
-      // Turning off: remove circle
-      if (shieldCircleRef.current) {
-        shieldCircleRef.current.setMap(null);
-        shieldCircleRef.current = null;
-      }
+    if (!newState && shieldCircleRef.current) {
+      shieldCircleRef.current.setMap(null);
+      shieldCircleRef.current = null;
     }
   };
 
+  /* ==========================
+     11️⃣ Loading screen
+  ========================== */
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary/20 to-accent/10">
@@ -510,19 +523,16 @@ const Dashboard = () => {
     );
   }
 
-  if (!user) return null;
-
+  /* ==========================
+     12️⃣ Main Dashboard UI
+  ========================== */
   return (
     <div
       className="min-h-screen bg-cover bg-center bg-no-repeat"
-      style={{
-        backgroundImage: "url('/mountainbg.jpg')",
-      }}
+      style={{ backgroundImage: "url('/mountainbg.jpg')" }}
     >
-      {/* Hidden audio player for beep */}
       <audio ref={beepRef} src="/beep.mp3" preload="auto" />
 
-      {/* Gradient overlay */}
       <div className="min-h-screen bg-gradient-to-br from-white/40 via-white/30 to-white/20">
         {/* Header */}
         <header className="border-b bg-card/95 backdrop-blur-sm sticky top-0 z-50">
@@ -561,7 +571,7 @@ const Dashboard = () => {
           </div>
         </header>
 
-        {/* Main Content */}
+        {/* Content */}
         <main className="container mx-auto px-4 py-8">
           <Tabs
             value={activeTab}
@@ -573,11 +583,8 @@ const Dashboard = () => {
               <TabsTrigger value="helpdesk">Help & Support</TabsTrigger>
             </TabsList>
 
-            <TabsContent
-              value="dashboard"
-              className="space-y-6"
-            >
-              {/* Welcome */}
+            <TabsContent value="dashboard" className="space-y-6">
+              {/* Welcome card */}
               <Card className="bg-gradient-to-r from-primary to-accent text-white border-0 shadow-xl">
                 <CardHeader className="pb-6">
                   <div className="flex items-center justify-between">
@@ -587,7 +594,7 @@ const Dashboard = () => {
                       </div>
                       <div>
                         <CardTitle className="text-3xl font-bold">
-                          Welcome,
+                          Welcome,{" "}
                           {user.user_metadata?.full_name ||
                             user.email?.split("@")[0]}
                           !
@@ -611,7 +618,7 @@ const Dashboard = () => {
                 </CardHeader>
               </Card>
 
-              {/* ✅ Real-Time Location Map */}
+              {/* Live location & Mobile Shield */}
               {location && (
                 <Card>
                   <CardHeader>
@@ -623,7 +630,6 @@ const Dashboard = () => {
                       Latitude: {location.lat.toFixed(6)}, Longitude:{" "}
                       {location.lng.toFixed(6)}
                     </CardDescription>
-                    {/* ✅ Safe / Unsafe Indicator */}
                     <div className="mt-2">
                       {isSafe ? (
                         <span className="px-3 py-1 rounded-full bg-green-500 text-white font-semibold">
@@ -638,7 +644,6 @@ const Dashboard = () => {
                   </CardHeader>
                   <CardContent>
                     <div ref={mapRef} className="w-full h-64 rounded-lg border" />
-                    {/* Mobile Shield button */}
                     <div className="mt-4 flex justify-center">
                       <Button
                         variant={mobileShieldActive ? "destructive" : "outline"}
@@ -654,7 +659,7 @@ const Dashboard = () => {
                 </Card>
               )}
 
-              {/* ✅ Destinations Section */}
+              {/* Destination search & list */}
               <Card>
                 <CardHeader>
                   <CardTitle className="text-2xl font-bold">
@@ -679,9 +684,9 @@ const Dashboard = () => {
                     />
                     {suggestions.length > 0 && (
                       <ul className="absolute z-10 bg-white border rounded-md shadow-md w-full mt-1 max-h-60 overflow-auto">
-                        {suggestions.map((place, index) => (
+                        {suggestions.map((place, idx) => (
                           <li
-                            key={index}
+                            key={idx}
                             className="px-4 py-2 hover:bg-secondary cursor-pointer flex items-center space-x-2"
                             onClick={() => addDestination(place)}
                           >
@@ -745,6 +750,7 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+
 
 
 
