@@ -38,7 +38,7 @@ interface PanicAlert {
   longitude: number;
   status: string;
   created_at: string;
-  message?: string; // optional
+  message?: string;
 }
 
 const GEOFENCE_RADIUS = 700; // meters
@@ -68,9 +68,7 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [panicAlerts, setPanicAlerts] = useState<PanicAlert[]>([]);
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(
-    null
-  );
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [isSafe, setIsSafe] = useState(true);
@@ -90,7 +88,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  /* --------------------------- 1️⃣ Audio unlock --------------------------- */
+  /* -------------------------------- 1️⃣ Audio unlock -------------------------------- */
   useEffect(() => {
     const unlockAudio = () => {
       if (beepRef.current) {
@@ -104,7 +102,7 @@ const Dashboard = () => {
     window.addEventListener("click", unlockAudio);
   }, []);
 
-  /* --------------------------- 2️⃣ Auth & profile ----------------------- */
+  /* -------------------------------- 2️⃣ Auth & profile -------------------------------- */
   useEffect(() => {
     const getUser = async () => {
       const {
@@ -123,7 +121,7 @@ const Dashboard = () => {
           return;
         }
         await fetchDestinations(user.id);
-        await fetchPanicAlerts(); // <-- fetch alerts on login
+        await fetchPanicAlerts();                                  // <‑‑ fetch alerts
       } else {
         navigate("/signin");
       }
@@ -140,7 +138,7 @@ const Dashboard = () => {
     return () => data.subscription.unsubscribe();
   }, [navigate]);
 
-  /* --------------------------- 3️⃣ Map & geofencing --------------------- */
+  /* -------------------------------- 3️⃣ Map & geofencing -------------------------------- */
   useEffect(() => {
     if (!("geolocation" in navigator)) return;
 
@@ -286,7 +284,7 @@ const Dashboard = () => {
     return () => navigator.geolocation.clearWatch(watchId);
   }, [toast, destinations, user, mobileShieldActive]);
 
-  /* --------------------------- 4️⃣ Update location DB ------------------- */
+  /* -------------------------------- 4️⃣ Update location DB -------------------------------- */
   const updateUserLocation = async (
     userId: string,
     latitude: number,
@@ -305,7 +303,7 @@ const Dashboard = () => {
     }
   };
 
-  /* --------------------------- 5️⃣ Periodic sync ----------------------- */
+  /* -------------------------------- 5️⃣ Periodic sync -------------------------------- */
   useEffect(() => {
     if (!user || !location) return;
     const interval = setInterval(() => {
@@ -314,7 +312,7 @@ const Dashboard = () => {
     return () => clearInterval(interval);
   }, [user, location]);
 
-  /* --------------------------- 6️⃣ Panic button ------------------------ */
+  /* -------------------------------- 6️⃣ Panic button -------------------------------- */
   const handlePanicButton = async () => {
     if (!user || !location) return;
 
@@ -335,7 +333,7 @@ const Dashboard = () => {
         variant: "destructive",
       });
 
-      await fetchPanicAlerts(); // update local state
+      await fetchPanicAlerts();                                     // <‑‑ refresh list
     } catch (err: any) {
       toast({
         title: "Error sending panic alert",
@@ -345,7 +343,7 @@ const Dashboard = () => {
     }
   };
 
-  /* --------------------------- 7️⃣ Fetch destinations ------------------- */
+  /* -------------------------------- 7️⃣ Fetch destinations -------------------------------- */
   const fetchDestinations = async (userId: string) => {
     try {
       const { data, error } = await supabase
@@ -365,7 +363,7 @@ const Dashboard = () => {
     }
   };
 
-  /* --------------------------- 7️⃣ Fetch panic alerts ------------------- */
+  /* -------------------------------- 7️⃣ Fetch panic alerts -------------------------------- */
   const fetchPanicAlerts = async () => {
     try {
       const { data, error } = await supabase
@@ -384,7 +382,7 @@ const Dashboard = () => {
     }
   };
 
-  /* --------------------------- 8️⃣ Sign‑out --------------------------- */
+  /* -------------------------------- 8️⃣ Sign‑out -------------------------------- */
   const handleSignOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
@@ -399,7 +397,7 @@ const Dashboard = () => {
     }
   };
 
-  /* --------------------------- 9️⃣ Debounce helper --------------------- */
+  /* -------------------------------- 9️⃣ Debounce helper -------------------------------- */
   const debounce = (fn: Function, delay: number) => {
     let timer: NodeJS.Timeout;
     return (...args: any[]) => {
@@ -408,7 +406,7 @@ const Dashboard = () => {
     };
   };
 
-  /* ------------------------ 10️⃣ Fetch location suggestions ---------- */
+  /* -------------------------------- 10️⃣ Fetch location suggestions -------------------------------- */
   const fetchSuggestions = async (value: string) => {
     setQuery(value);
     if (value.length < 3) {
@@ -428,7 +426,7 @@ const Dashboard = () => {
 
   const debouncedFetchSuggestions = useRef(debounce(fetchSuggestions, 400)).current;
 
-  /* ---------------------------- 11️⃣ Add destination ------------------ */
+  /* -------------------------------- 11️⃣ Add destination -------------------------------- */
   const addDestination = async (place: any) => {
     if (!user) return;
     try {
@@ -461,7 +459,7 @@ const Dashboard = () => {
     }
   };
 
-  /* ---------------------------- 12️⃣ Remove destination ---------------- */
+  /* -------------------------------- 12️⃣ Remove destination -------------------------------- */
   const removeDestination = async (id: string) => {
     try {
       const { error } = await supabase.from("destinations").delete().eq("id", id);
@@ -480,7 +478,7 @@ const Dashboard = () => {
     }
   };
 
-  /* ---------------------------- 13️⃣ Mobile Shield toggle ------------- */
+  /* -------------------------------- 13️⃣ Mobile Shield toggle -------------------------------- */
   const toggleMobileShield = () => {
     const newState = !mobileShieldActive;
     setMobileShieldActive(newState);
@@ -491,7 +489,7 @@ const Dashboard = () => {
     }
   };
 
-  /* --------------------------- 14️⃣ Loading screen ------------------- */
+  /* -------------------------------- 14️⃣ Loading screen -------------------------------- */
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary/20 to-accent/10">
@@ -500,7 +498,7 @@ const Dashboard = () => {
     );
   }
 
-  /* --------------- 15️⃣ Main UI (unchanged except new markers) ------- */
+  /* -------------------------------- 15️⃣ Main UI (unchanged except new alerts card) -------------------------------- */
   return (
     <div
       className="min-h-screen bg-cover bg-center bg-no-repeat"
@@ -692,6 +690,47 @@ const Dashboard = () => {
                           >
                             <Trash2 className="w-4 h-4 text-destructive" />
                           </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* **New section: Police Panic Alerts** */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-2xl font-bold">
+                    Police Panic Alerts
+                  </CardTitle>
+                  <CardDescription>
+                    Alerts generated by police and posted on the map.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {panicAlerts.length === 0 ? (
+                    <p>No alerts to show.</p>
+                  ) : (
+                    <ul className="space-y-3">
+                      {panicAlerts.map((al) => (
+                        <li
+                          key={al.id}
+                          className="p-3 border rounded-lg shadow bg-red-50"
+                        >
+                          <p>
+                            <strong>ID:</strong> {al.id}
+                          </p>
+                          <p>
+                            <strong>Status:</strong> {al.status}
+                          </p>
+                          <p>
+                            <strong>Location:</strong>{" "}
+                            {al.latitude}, {al.longitude}
+                          </p>
+                          <p>
+                            <strong>Time:</strong>{" "}
+                            {new Date(al.created_at).toLocaleString()}
+                          </p>
                         </li>
                       ))}
                     </ul>
