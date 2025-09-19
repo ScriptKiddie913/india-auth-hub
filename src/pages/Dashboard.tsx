@@ -1,4 +1,5 @@
-import { useEffect, useState, useRef } from "react";
+// src/pages/Dashboard.tsx
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,33 +31,46 @@ interface Destination {
   longitude?: number;
 }
 
-// ✅ Haversine formula to calculate distance (in meters)
+interface PanicAlert {
+  id: string;
+  user_id: string;
+  latitude: number;
+  longitude: number;
+  status: string;
+  created_at: string;
+  message?: string; // optional
+}
+
+const GEOFENCE_RADIUS = 700; // meters
+const MOBILE_SHIELD_RADIUS = 200; // meters
+
+// Haversine distance helper
 const getDistance = (
   lat1: number,
   lon1: number,
   lat2: number,
   lon2: number
 ) => {
-  const R = 6371e3; // Earth radius in meters
+  const R = 6371e3;
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const φ1 = toRad(lat1);
   const φ2 = toRad(lat2);
   const Δφ = toRad(lat2 - lat1);
   const Δλ = toRad(lon2 - lon1);
-
   const a =
     Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
     Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c; // in meters
+  return 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * R;
 };
 
 const Dashboard = () => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [destinations, setDestinations] = useState<Destination[]>([]);
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [panicAlerts, setPanicAlerts] = useState<PanicAlert[]>([]);
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(
+    null
+  );
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [isSafe, setIsSafe] = useState(true);
@@ -67,25 +81,16 @@ const Dashboard = () => {
   const markerRef = useRef<any>(null);
   const isFirstLoad = useRef(true);
 
-  // ✅ Normal geofence state
   const geofenceStatus = useRef<Record<string, boolean>>({});
   const geofenceCircles = useRef<Record<string, any>>({});
-  const GEOFENCE_RADIUS = 700; // meters
-
-  // MobileShield
-  const [mobileShieldActive, setMobileShieldActive] = useState(false);
   const shieldCircleRef = useRef<any>(null);
-  const MOBILE_SHIELD_RADIUS = 200; // meters (diameter = 400m)
-
-  // ✅ Beep sound
+  const [mobileShieldActive, setMobileShieldActive] = useState(false);
   const beepRef = useRef<HTMLAudioElement | null>(null);
 
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  /* ==========================
-     1️⃣ Unlock audio on first click
-  ========================== */
+  /* --------------------------- 1️⃣ Audio unlock --------------------------- */
   useEffect(() => {
     const unlockAudio = () => {
       if (beepRef.current) {
@@ -99,9 +104,7 @@ const Dashboard = () => {
     window.addEventListener("click", unlockAudio);
   }, []);
 
-  /* ==========================
-     2️⃣ Authentication and profile check
-  ========================== */
+  /* --------------------------- 2️⃣ Auth & profile ----------------------- */
   useEffect(() => {
     const getUser = async () => {
       const {
@@ -109,8 +112,6 @@ const Dashboard = () => {
       } = await supabase.auth.getUser();
       if (user) {
         setUser(user);
-
-        // Check if user has completed profile
         const { data: profile } = await supabase
           .from("profiles")
           .select("nationality, phone")
@@ -121,8 +122,8 @@ const Dashboard = () => {
           navigate("/profile-completion");
           return;
         }
-
         await fetchDestinations(user.id);
+        await fetchPanicAlerts(); // <-- fetch alerts on login
       } else {
         navigate("/signin");
       }
@@ -139,9 +140,7 @@ const Dashboard = () => {
     return () => data.subscription.unsubscribe();
   }, [navigate]);
 
-  /* ==========================
-     3️⃣ Real‑time location + map + geofencing
-  ========================== */
+  /* --------------------------- 3️⃣ Map & geofencing --------------------- */
   useEffect(() => {
     if (!("geolocation" in navigator)) return;
 
@@ -151,7 +150,7 @@ const Dashboard = () => {
         const lng = pos.coords.longitude;
         setLocation({ lat, lng });
 
-        // 3.1 Map initialization
+        /* 3.1 Map init */
         if (mapRef.current && !mapInstance.current && (window as any).google) {
           mapInstance.current = new (window as any).google.maps.Map(mapRef.current, {
             center: { lat, lng },
@@ -164,18 +163,18 @@ const Dashboard = () => {
           });
         }
 
-        // 3.2 Marker update
+        /* 3.2 Marker update */
         if (markerRef.current) {
           markerRef.current.setPosition({ lat, lng });
         }
 
-        // 3.3 Auto‑pan on first load
+        /* 3.3 Auto‑pan */
         if (mapInstance.current && isFirstLoad.current) {
           mapInstance.current.panTo({ lat, lng });
           isFirstLoad.current = false;
         }
 
-        // 3.4 Regular geofence circles
+        /* 3.4 Destination circles */
         if (mapInstance.current) {
           destinations.forEach((dest) => {
             if (dest.latitude && dest.longitude) {
@@ -195,7 +194,7 @@ const Dashboard = () => {
             }
           });
 
-          // Remove circles for deleted destinations
+          /* Remove stale circles */
           Object.keys(geofenceCircles.current).forEach((id) => {
             if (!destinations.find((d) => d.id === id)) {
               geofenceCircles.current[id].setMap(null);
@@ -204,7 +203,7 @@ const Dashboard = () => {
           });
         }
 
-        // 3.5 MobileShield circle
+        /* 3.5 MobileShield */
         if (mobileShieldActive) {
           if (!shieldCircleRef.current && mapInstance.current) {
             shieldCircleRef.current = new (window as any).google.maps.Circle({
@@ -222,10 +221,9 @@ const Dashboard = () => {
           }
         }
 
-        // 3.6 Geofence checks
+        /* 3.6 Geofence checks */
         if (user && destinations.length) {
           let insideAny = false;
-
           destinations.forEach((dest) => {
             if (dest.latitude && dest.longitude) {
               const distance = getDistance(
@@ -254,7 +252,6 @@ const Dashboard = () => {
                   variant: "destructive",
                 });
 
-                // ⚠️ Beep on exit
                 if (beepRef.current) {
                   beepRef.current.currentTime = 0;
                   beepRef.current.play().catch(() => {
@@ -263,16 +260,14 @@ const Dashboard = () => {
                     );
                   });
                 }
-
                 geofenceStatus.current[dest.id] = false;
               }
             }
           });
-
           setIsSafe(insideAny);
         }
 
-        // 3.7 Sync location to DB
+        /* 3.7 Sync location to DB */
         if (user) {
           updateUserLocation(user.id, lat, lng);
         }
@@ -291,27 +286,18 @@ const Dashboard = () => {
     return () => navigator.geolocation.clearWatch(watchId);
   }, [toast, destinations, user, mobileShieldActive]);
 
-  /* ==========================
-     4️⃣ Update user location in DB
-  ========================== */
+  /* --------------------------- 4️⃣ Update location DB ------------------- */
   const updateUserLocation = async (
     userId: string,
     latitude: number,
     longitude: number
   ) => {
     try {
-      await supabase
-        .from("user_locations")
-        .delete()
-        .eq("user_id", userId);
+      await supabase.from("user_locations").delete().eq("user_id", userId);
 
       const { error } = await supabase
         .from("user_locations")
-        .insert({
-          user_id: userId,
-          latitude,
-          longitude,
-        });
+        .insert({ user_id: userId, latitude, longitude });
 
       if (error) throw error;
     } catch (err: any) {
@@ -319,9 +305,7 @@ const Dashboard = () => {
     }
   };
 
-  /* ==========================
-     5️⃣ Periodic location sync (15 s)
-  ========================== */
+  /* --------------------------- 5️⃣ Periodic sync ----------------------- */
   useEffect(() => {
     if (!user || !location) return;
     const interval = setInterval(() => {
@@ -330,22 +314,18 @@ const Dashboard = () => {
     return () => clearInterval(interval);
   }, [user, location]);
 
-  /* ==========================
-     6️⃣ Panic button
-  ========================== */
+  /* --------------------------- 6️⃣ Panic button ------------------------ */
   const handlePanicButton = async () => {
     if (!user || !location) return;
 
     try {
-      const { error } = await supabase
-        .from("panic_alerts")
-        .insert({
-          user_id: user.id,
-          message: "Emergency! User needs immediate assistance.",
-          latitude: location.lat,
-          longitude: location.lng,
-          status: "active",
-        });
+      const { error } = await supabase.from("panic_alerts").insert({
+        user_id: user.id,
+        message: "Emergency! User needs immediate assistance.",
+        latitude: location.lat,
+        longitude: location.lng,
+        status: "active",
+      });
 
       if (error) throw error;
 
@@ -354,6 +334,8 @@ const Dashboard = () => {
         description: "Emergency services have been notified of your location.",
         variant: "destructive",
       });
+
+      await fetchPanicAlerts(); // update local state
     } catch (err: any) {
       toast({
         title: "Error sending panic alert",
@@ -363,9 +345,7 @@ const Dashboard = () => {
     }
   };
 
-  /* ==========================
-     7️⃣ Fetch destinations
-  ========================== */
+  /* --------------------------- 7️⃣ Fetch destinations ------------------- */
   const fetchDestinations = async (userId: string) => {
     try {
       const { data, error } = await supabase
@@ -385,9 +365,26 @@ const Dashboard = () => {
     }
   };
 
-  /* ==========================
-     8️⃣ Sign‑out
-  ========================== */
+  /* --------------------------- 7️⃣ Fetch panic alerts ------------------- */
+  const fetchPanicAlerts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("panic_alerts")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setPanicAlerts(data || []);
+    } catch (err: any) {
+      toast({
+        title: "Error fetching panic alerts",
+        description: err.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  /* --------------------------- 8️⃣ Sign‑out --------------------------- */
   const handleSignOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
@@ -397,17 +394,12 @@ const Dashboard = () => {
         variant: "destructive",
       });
     } else {
-      toast({
-        title: "Signed out successfully",
-        description: "Come back soon!",
-      });
+      toast({ title: "Signed out successfully", description: "Come back soon!" });
       navigate("/signin");
     }
   };
 
-  /* ==========================
-     9️⃣ Debounce helper
-  ========================== */
+  /* --------------------------- 9️⃣ Debounce helper --------------------- */
   const debounce = (fn: Function, delay: number) => {
     let timer: NodeJS.Timeout;
     return (...args: any[]) => {
@@ -416,9 +408,7 @@ const Dashboard = () => {
     };
   };
 
-  /* ==========================
-     🔟 Fetch location suggestions (Photon API)
-  ========================== */
+  /* ------------------------ 10️⃣ Fetch location suggestions ---------- */
   const fetchSuggestions = async (value: string) => {
     setQuery(value);
     if (value.length < 3) {
@@ -436,13 +426,9 @@ const Dashboard = () => {
     }
   };
 
-  const debouncedFetchSuggestions = useRef(
-    debounce(fetchSuggestions, 400)
-  ).current;
+  const debouncedFetchSuggestions = useRef(debounce(fetchSuggestions, 400)).current;
 
-  /* ==========================
-     🔒 Add destination
-  ========================== */
+  /* ---------------------------- 11️⃣ Add destination ------------------ */
   const addDestination = async (place: any) => {
     if (!user) return;
     try {
@@ -475,15 +461,10 @@ const Dashboard = () => {
     }
   };
 
-  /* ==========================
-     ✂️ Remove destination
-  ========================== */
+  /* ---------------------------- 12️⃣ Remove destination ---------------- */
   const removeDestination = async (id: string) => {
     try {
-      const { error } = await supabase
-        .from("destinations")
-        .delete()
-        .eq("id", id);
+      const { error } = await supabase.from("destinations").delete().eq("id", id);
       if (error) throw error;
       setDestinations((prev) => prev.filter((d) => d.id !== id));
       toast({
@@ -499,9 +480,7 @@ const Dashboard = () => {
     }
   };
 
-  /* ==========================
-     📋 Mobile Shield toggle
-  ========================== */
+  /* ---------------------------- 13️⃣ Mobile Shield toggle ------------- */
   const toggleMobileShield = () => {
     const newState = !mobileShieldActive;
     setMobileShieldActive(newState);
@@ -512,9 +491,7 @@ const Dashboard = () => {
     }
   };
 
-  /* ==========================
-     11️⃣ Loading screen
-  ========================== */
+  /* --------------------------- 14️⃣ Loading screen ------------------- */
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary/20 to-accent/10">
@@ -523,9 +500,7 @@ const Dashboard = () => {
     );
   }
 
-  /* ==========================
-     12️⃣ Main Dashboard UI
-  ========================== */
+  /* --------------- 15️⃣ Main UI (unchanged except new markers) ------- */
   return (
     <div
       className="min-h-screen bg-cover bg-center bg-no-repeat"
@@ -571,7 +546,7 @@ const Dashboard = () => {
           </div>
         </header>
 
-        {/* Content */}
+        {/* Main */}
         <main className="container mx-auto px-4 py-8">
           <Tabs
             value={activeTab}
@@ -584,7 +559,7 @@ const Dashboard = () => {
             </TabsList>
 
             <TabsContent value="dashboard" className="space-y-6">
-              {/* Welcome card */}
+              {/* Welcome */}
               <Card className="bg-gradient-to-r from-primary to-accent text-white border-0 shadow-xl">
                 <CardHeader className="pb-6">
                   <div className="flex items-center justify-between">
@@ -750,8 +725,3 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
-
-
-
-
-
