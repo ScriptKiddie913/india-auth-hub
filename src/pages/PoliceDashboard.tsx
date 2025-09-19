@@ -23,10 +23,14 @@ interface PanicAlert {
   created_at: string;
 }
 
+const GOOGLE_MAPS_API_KEY = "AIzaSyBU7z2W7aE4T6TSV7SqEk0UJiyjAC97UW8";
+
 const PoliceDashboard: React.FC = () => {
   const [panicAlerts, setPanicAlerts] = useState<PanicAlert[]>([]);
   const [filter, setFilter] = useState<"all" | "active" | "resolved">("all");
   const [selectedAlert, setSelectedAlert] = useState<PanicAlert | null>(null);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -34,7 +38,7 @@ const PoliceDashboard: React.FC = () => {
   const mapInstance = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
 
-  /* ✅ Fetch panic alerts */
+  /* ✅ Fetch panic alerts from Supabase */
   const fetchPanicAlerts = async () => {
     const { data, error } = await supabase
       .from("panic_alerts")
@@ -54,20 +58,35 @@ const PoliceDashboard: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  /* ✅ Initialize Google Map */
+  /* ✅ Track user live location */
+  useEffect(() => {
+    if (navigator.geolocation) {
+      const watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          setUserLocation({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          });
+        },
+        (error) => console.error("Geolocation error:", error),
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
+      );
+
+      return () => navigator.geolocation.clearWatch(watchId);
+    }
+  }, []);
+
+  /* ✅ Load Google Maps script */
   useEffect(() => {
     const initMap = () => {
       if (!mapRef.current || mapInstance.current) return;
 
-      console.log("✅ Initializing Google Map...");
       mapInstance.current = new (window as any).google.maps.Map(mapRef.current, {
-        center: { lat: 22.5726, lng: 88.3639 }, // Kolkata
+        center: userLocation || { lat: 22.5726, lng: 88.3639 }, // default Kolkata
         zoom: 12,
       });
 
-      if (panicAlerts.length > 0) {
-        updateMarkers(panicAlerts);
-      }
+      updateMarkers(panicAlerts);
     };
 
     const scriptId = "google-maps-script";
@@ -75,66 +94,63 @@ const PoliceDashboard: React.FC = () => {
       if (!document.getElementById(scriptId)) {
         const script = document.createElement("script");
         script.id = scriptId;
-        script.src =
-          "https://maps.googleapis.com/maps/api/js?key=AIzaSyBU7z2W7aE4T6TSV7SqEk0UJiyjAC97UW8&libraries=places";
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places`;
         script.async = true;
         script.defer = true;
 
-        script.onload = () => {
-          console.log("✅ Google Maps script loaded");
-          initMap();
-        };
-
+        script.onload = initMap;
         script.onerror = () => {
-          console.error("❌ Failed to load Google Maps script");
+          toast({
+            title: "Google Maps Error",
+            description: "Failed to load map. Check API key restrictions.",
+            variant: "destructive",
+          });
         };
 
         document.body.appendChild(script);
-      } else {
-        document.getElementById(scriptId)?.addEventListener("load", initMap);
       }
     } else {
       initMap();
     }
-  }, []);
+  }, [panicAlerts, userLocation]);
 
-  /* ✅ Update markers whenever alerts change */
-  useEffect(() => {
-    if (mapInstance.current && panicAlerts.length > 0) {
-      updateMarkers(panicAlerts);
-    }
-  }, [panicAlerts]);
-
-  /* ✅ Update markers on the map */
+  /* ✅ Update markers */
   const updateMarkers = (alerts: PanicAlert[]) => {
     if (!mapInstance.current || !(window as any).google) return;
 
     // Clear old markers
-    markersRef.current.forEach((marker) => marker.setMap(null));
+    markersRef.current.forEach((m) => m.setMap(null));
     markersRef.current = [];
 
+    // Panic alerts markers
     alerts.forEach((alert) => {
       const marker = new (window as any).google.maps.Marker({
         position: { lat: alert.latitude, lng: alert.longitude },
         map: mapInstance.current,
         title: `Alert ID: ${alert.id}`,
+        icon:
+          alert.status === "resolved"
+            ? "http://maps.google.com/mapfiles/ms/icons/green-dot.png"
+            : "http://maps.google.com/mapfiles/ms/icons/red-dot.png",
       });
 
-      const infowindow = new (window as any).google.maps.InfoWindow({
-        content: `<div>
-          <strong>Alert ID:</strong> ${alert.id}<br/>
-          <strong>Status:</strong> ${alert.status}<br/>
-          <strong>Time:</strong> ${new Date(alert.created_at).toLocaleString()}
-        </div>`,
-      });
-
-      marker.addListener("click", () => {
-        infowindow.open(mapInstance.current, marker);
-        setSelectedAlert(alert);
-      });
-
+      marker.addListener("click", () => setSelectedAlert(alert));
       markersRef.current.push(marker);
     });
+
+    // User live location marker
+    if (userLocation) {
+      const userMarker = new (window as any).google.maps.Marker({
+        position: userLocation,
+        map: mapInstance.current,
+        title: "Your Location",
+        icon: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png",
+      });
+      markersRef.current.push(userMarker);
+
+      // Center map on user
+      mapInstance.current.setCenter(userLocation);
+    }
   };
 
   /* ✅ Resolve alert */
@@ -145,18 +161,12 @@ const PoliceDashboard: React.FC = () => {
       .eq("id", id);
 
     if (error) {
-      toast({
-        title: "Error",
-        description: "Failed to resolve alert",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "Failed to resolve alert", variant: "destructive" });
     } else {
       setPanicAlerts((prev) =>
-        prev.map((alert) =>
-          alert.id === id ? { ...alert, status: "resolved" } : alert
-        )
+        prev.map((a) => (a.id === id ? { ...a, status: "resolved" } : a))
       );
-      toast({ title: "Success", description: "Alert marked as resolved" });
+      toast({ title: "✅ Success", description: "Alert marked as resolved" });
     }
   };
 
@@ -166,13 +176,9 @@ const PoliceDashboard: React.FC = () => {
     navigate("/police-signin");
   };
 
-  /* ✅ Filters + Stats */
+  /* ✅ Filters & Stats */
   const filteredAlerts =
-    filter === "all"
-      ? panicAlerts
-      : panicAlerts.filter((a) =>
-          filter === "resolved" ? a.status === "resolved" : a.status !== "resolved"
-        );
+    filter === "all" ? panicAlerts : panicAlerts.filter((a) => a.status === filter);
 
   const activeCount = panicAlerts.filter((a) => a.status !== "resolved").length;
   const resolvedCount = panicAlerts.filter((a) => a.status === "resolved").length;
@@ -230,7 +236,7 @@ const PoliceDashboard: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Alerts List with Tabs */}
+        {/* Alerts List */}
         <Card>
           <CardHeader>
             <CardTitle>Panic Alerts</CardTitle>
@@ -255,16 +261,9 @@ const PoliceDashboard: React.FC = () => {
                         onClick={() => setSelectedAlert(alert)}
                       >
                         <div>
-                          <p>
-                            <strong>ID:</strong> {alert.id}
-                          </p>
-                          <p>
-                            <strong>Status:</strong> {alert.status}
-                          </p>
-                          <p>
-                            <strong>Time:</strong>{" "}
-                            {new Date(alert.created_at).toLocaleString()}
-                          </p>
+                          <p><strong>ID:</strong> {alert.id}</p>
+                          <p><strong>Status:</strong> {alert.status}</p>
+                          <p><strong>Time:</strong> {new Date(alert.created_at).toLocaleString()}</p>
                         </div>
                         {alert.status !== "resolved" && (
                           <Button
@@ -286,7 +285,7 @@ const PoliceDashboard: React.FC = () => {
         </Card>
       </div>
 
-      {/* Alert Drawer */}
+      {/* Drawer for Alert Details */}
       {selectedAlert && (
         <Drawer open={!!selectedAlert} onOpenChange={() => setSelectedAlert(null)}>
           <DrawerContent>
