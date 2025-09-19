@@ -97,7 +97,11 @@ const SignUp = () => {
 
       // 3️⃣ Update Supabase user with blockchain info
       await supabase.auth.updateUser({
-        data: { wallet_address: await getEthereumAccount(), unique_id: uniqueId, tx_link: txLink },
+        data: {
+          wallet_address: await getEthereumAccount(),
+          unique_id: uniqueId,
+          tx_link: txLink,
+        },
       });
 
       toast({
