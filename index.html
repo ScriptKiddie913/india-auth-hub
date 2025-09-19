@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>IndianTravelSheild</title>
+    <title>IndianTravelShield</title>
 
     <!-- ✅ Favicon -->
     <link rel="icon" type="image/x-icon" href="/image/favicon_.ico" />
@@ -27,6 +27,9 @@
       async
       defer
     ></script>
+
+    <!-- ✅ Ethers.js CDN for blockchain -->
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.8.4/dist/ethers.umd.min.js"></script>
 
     <!-- ✅ Custom Styles -->
     <style>
@@ -160,6 +163,7 @@
     <!-- Hidden Google Translate element -->
     <div id="google_translate_element"></div>
 
+    <!-- ✅ Main App Script -->
     <script type="module" src="/src/main.tsx"></script>
 
     <!-- Restore redirect -->
@@ -316,9 +320,46 @@
         });
       });
     </script>
+
+    <!-- ✅ Google Translate CDN -->
     <script
       type="text/javascript"
       src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"
     ></script>
+
+    <!-- ✅ Blockchain Helper Script -->
+    <script>
+      // Check for MetaMask
+      if (!window.ethereum) {
+        console.warn("MetaMask not detected!");
+      }
+
+      async function getEthereumAccount() {
+        const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+        return accounts[0];
+      }
+
+      function generateUniqueId() {
+        return ethers.keccak256(ethers.toUtf8Bytes(Date.now().toString() + Math.random()));
+      }
+
+      async function registerOnChain(uniqueId) {
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+        const registryAddress = "YOUR_CONTRACT_ADDRESS_HERE"; // Replace with your deployed Registry
+        const registryAbi = [
+          "function register(bytes32 uniqueId) external",
+        ];
+        const contract = new ethers.Contract(registryAddress, registryAbi, signer);
+
+        // Estimate gas
+        const gasLimit = await contract.estimateGas.register(uniqueId);
+
+        // Send transaction
+        const tx = await contract.register(uniqueId, { gasLimit });
+        await tx.wait();
+        return tx.hash;
+      }
+    </script>
   </body>
 </html>
