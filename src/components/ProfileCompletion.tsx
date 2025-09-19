@@ -1,10 +1,14 @@
 /* =======================================================
-   Profile‑completion page – 100 % vanilla TS+React
+   Profile-completion page – Vanilla TS + React
    ------------------------------------------------------
-   This file adds the missing wallet_address/unique_id
-   fields into the `profiles` table if they are not already stored.
-   =======================================================
-*/
+   Features:
+   ✅ Pulls MetaMask wallet if not stored
+   ✅ Generates a unique ID
+   ✅ Persists wallet_address + unique_id in Supabase
+   ✅ Calls Registry smart contract (register)
+   ✅ Stores tx hash in Supabase
+   ✅ Shows clickable Etherscan link
+   ======================================================= */
 
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -26,28 +30,13 @@ import {
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { User, FileText, Phone, MapPin } from "lucide-react";
+import { User, FileText, Phone, Mail } from "lucide-react";
+import {
+  getEthereumAccount,
+  generateUniqueId,
+  registerOnChainAndPersist,
+} from "@/lib/ethereum";
 
-/* ---------- Helper functions ------------------------------------ */
-async function getEthereumAccount(): Promise<string> {
-  if (!window.ethereum) throw new Error("MetaMask not installed");
-  const accounts: string[] = await window.ethereum.request({
-    method: "eth_requestAccounts",
-  });
-  return accounts[0];
-}
-
-async function generateUniqueId(address: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const text = `${address}-${Date.now()}`;
-  const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(text));
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-/* ---------- Main component ------------------------------------- */
 interface FormData {
   name: string;
   nationality: string;
@@ -58,7 +47,7 @@ interface FormData {
 }
 
 const ProfileCompletion: React.FC = () => {
-  /* ----- State --------------------------------------------- */
+  /* ------------ state --------------------------------------------- */
   const [formData, setFormData] = useState<FormData>({
     name: "",
     nationality: "",
@@ -68,16 +57,16 @@ const ProfileCompletion: React.FC = () => {
     email: "",
   });
   const [loading, setLoading] = useState(false);
+  const [txHash, setTxHash] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  /* ----- Handler ------------------------------------------- */
+  /* ------------ helpers ------------------------------------------- */
   const handleInputChange = (field: keyof FormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   const validateForm = (): boolean => {
-    /* basic required checks */
     if (!formData.name || !formData.nationality || !formData.phone || !formData.email) {
       toast({
         title: "Missing information",
@@ -86,8 +75,6 @@ const ProfileCompletion: React.FC = () => {
       });
       return false;
     }
-
-    /* nationality‑specific checks */
     if (formData.nationality === "Indian" && !formData.aadhaar) {
       toast({
         title: "Aadhaar required",
@@ -96,17 +83,14 @@ const ProfileCompletion: React.FC = () => {
       });
       return false;
     }
-
     if (!formData.passport && formData.nationality !== "Indian") {
       toast({
         title: "Passport required",
-        description: "Passport number is required for non‑Indian citizens",
+        description: "Passport number is required for non-Indian citizens",
         variant: "destructive",
       });
       return false;
     }
-
-    /* phone format */
     const phoneRegex = /^[+]?[\d\s\-()]{10,15}$/;
     if (!phoneRegex.test(formData.phone)) {
       toast({
@@ -116,60 +100,57 @@ const ProfileCompletion: React.FC = () => {
       });
       return false;
     }
-
     return true;
   };
 
+  /* ------------ submission ---------------------------------------- */
   const handleSubmit = async () => {
     if (!validateForm()) return;
 
     setLoading(true);
-    console.log("Starting profile update…");
-
     try {
-      /* ----------------------------------------------------- */
-      /* 1) Get the current logged‑in Supabase user */
+      /* 1) Get logged-in Supabase user */
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not found");
 
-      /* ----------------------------------------------------- */
-      /* 2) Pull MetaMask account and generate ID if they aren’t already there. */
+      /* 2) Get MetaMask wallet address + generate unique ID */
       const walletAddress = await getEthereumAccount();
       const uniqueId = await generateUniqueId(walletAddress);
 
-      /* ----------------------------------------------------- */
-      /* 3) Build the upsert payload */
+      /* 3) Build profile payload */
       const profileData = {
         user_id: user.id,
         full_name: formData.name,
-        phone: formData.phone,
         nationality: formData.nationality,
         passport_number: formData.passport || null,
         aadhaar_number: formData.aadhaar || null,
+        phone: formData.phone,
         email: formData.email,
-        wallet_address: walletAddress,  // new column
-        unique_id: uniqueId,            // new column
+        wallet_address: walletAddress,
+        unique_id: uniqueId,
       };
 
-      /* ----------------------------------------------------- */
-      /* 4) Upsert into Supabase */
+      /* 4) Save in Supabase profiles table */
       const { error: profileError } = await supabase
         .from("profiles")
         .upsert(profileData, { onConflict: "user_id" });
 
-      if (profileError) {
-        console.error(profileError);
-        throw profileError;
+      if (profileError) throw profileError;
+
+      /* 5) Send blockchain transaction */
+      const tx = await registerOnChainAndPersist(uniqueId, user.id, toast);
+
+      if (tx?.hash) {
+        setTxHash(tx.hash);
       }
 
-      /* ----------------------------------------------------- */
-      /* 5) Success workflow */
+      /* 6) Success UI */
       toast({
-        title: "Profile completed!",
-        description:
-          "Your profile has been successfully updated. You can now access the dashboard.",
+        title: "Profile completed",
+        description: "Your profile is saved and registered on-chain.",
       });
-      navigate("/dashboard");
+
+      setTimeout(() => navigate("/dashboard"), 2000);
     } catch (error: any) {
       console.error(error);
       toast({
@@ -182,7 +163,7 @@ const ProfileCompletion: React.FC = () => {
     }
   };
 
-  /* ---------- UI --------------------------------------------- */
+  /* ------------ UI ------------------------------------------------ */
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-secondary/20 to-accent/10 p-4 flex items-center justify-center">
       <Card className="w-full max-w-2xl mx-auto shadow-xl">
@@ -194,7 +175,7 @@ const ProfileCompletion: React.FC = () => {
             Complete Your Profile
           </CardTitle>
           <p className="text-muted-foreground mt-2">
-            Please provide your personal information & KYC details
+            Provide your information & link your wallet
           </p>
         </CardHeader>
 
@@ -209,8 +190,9 @@ const ProfileCompletion: React.FC = () => {
                   id="name"
                   value={formData.name}
                   onChange={(e) => handleInputChange("name", e.target.value)}
-                  placeholder="Enter your full name as per passport/Aadhaar"
+                  placeholder="Enter your full name"
                   className="pl-10"
+                  required
                 />
               </div>
             </div>
@@ -219,9 +201,7 @@ const ProfileCompletion: React.FC = () => {
             <div className="space-y-2">
               <Label>Nationality *</Label>
               <Select
-                onValueChange={(value) =>
-                  handleInputChange("nationality", value)
-                }
+                onValueChange={(value) => handleInputChange("nationality", value)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select your nationality" />
@@ -237,7 +217,7 @@ const ProfileCompletion: React.FC = () => {
               </Select>
             </div>
 
-            {/* Passport (for non‑Indian) */}
+            {/* Passport */}
             {formData.nationality !== "Indian" && (
               <div className="space-y-2">
                 <Label htmlFor="passport">Passport Number *</Label>
@@ -251,12 +231,13 @@ const ProfileCompletion: React.FC = () => {
                     }
                     placeholder="Enter your passport number"
                     className="pl-10"
+                    required
                   />
                 </div>
               </div>
             )}
 
-            {/* Aadhaar (for Indian) */}
+            {/* Aadhaar */}
             {formData.nationality === "Indian" && (
               <div className="space-y-2">
                 <Label htmlFor="aadhaar">Aadhaar Number *</Label>
@@ -268,15 +249,16 @@ const ProfileCompletion: React.FC = () => {
                     onChange={(e) =>
                       handleInputChange("aadhaar", e.target.value)
                     }
-                    placeholder="Enter your 12‑digit Aadhaar number"
+                    placeholder="Enter your 12-digit Aadhaar number"
                     className="pl-10"
                     maxLength={12}
+                    required
                   />
                 </div>
               </div>
             )}
 
-            {/* Phone number */}
+            {/* Phone */}
             <div className="space-y-2">
               <Label htmlFor="phone">Phone Number *</Label>
               <div className="relative">
@@ -287,6 +269,7 @@ const ProfileCompletion: React.FC = () => {
                   onChange={(e) => handleInputChange("phone", e.target.value)}
                   placeholder="+91 9876543210"
                   className="pl-10"
+                  required
                 />
               </div>
             </div>
@@ -295,7 +278,7 @@ const ProfileCompletion: React.FC = () => {
             <div className="space-y-2">
               <Label htmlFor="email">Email Address *</Label>
               <div className="relative">
-                <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="email"
                   type="email"
@@ -303,13 +286,14 @@ const ProfileCompletion: React.FC = () => {
                   onChange={(e) => handleInputChange("email", e.target.value)}
                   placeholder="you@example.com"
                   className="pl-10"
+                  required
                 />
               </div>
             </div>
           </div>
 
           {/* Submit button */}
-          <div className="flex gap-4">
+          <div className="flex flex-col gap-4">
             <Button
               onClick={handleSubmit}
               disabled={loading}
@@ -317,6 +301,18 @@ const ProfileCompletion: React.FC = () => {
             >
               {loading ? "Processing…" : "Complete Profile"}
             </Button>
+
+            {/* Tx Hash link */}
+            {txHash && (
+              <a
+                href={`https://mumbai.polygonscan.com/tx/${txHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-center text-sm text-blue-600 hover:underline"
+              >
+                View Transaction on Polygonscan
+              </a>
+            )}
           </div>
         </CardContent>
       </Card>
