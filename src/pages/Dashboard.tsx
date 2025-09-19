@@ -1,3 +1,4 @@
+// src/pages/Dashboard.tsx
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -24,143 +25,86 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import HelpDesk from "@/components/HelpDesk";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
-/* ------------------------------------------------------------------
- * Types
- * ------------------------------------------------------------------ */
-interface Destination {
+/*** ================== NEW TYPES ================== ***/
+type AlertZone = {
+  id: string;
+  title: string;
+  description: string;
+  lat: number;
+  lng: number;
+  radiusMeters: number;
+  severity: "low" | "medium" | "high";
+};
+
+type Destination = {
   id: string;
   name: string;
   latitude?: number;
   longitude?: number;
-}
+};
 
-interface ThreatZone {
-  id: string;
-  name: string;
-  latitude: number;
-  longitude: number;
-  radius: number;     // meters
-  color: string;      // for Google‑Maps circle color
-  description?: string;
-}
-
-/* ------------------------------------------------------------------
- * Utility: Haversine distance (meters)
- * ------------------------------------------------------------------ */
+/*** ================== Haversine (kept) ================== ***/
 const getDistance = (
   lat1: number,
   lon1: number,
   lat2: number,
-  lon2: number,
+  lon2: number
 ) => {
   const R = 6371e3;
-  const dLat = (lat2 - lat1) * (Math.PI / 180);
-  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const φ1 = toRad(lat1);
+  const φ2 = toRad(lat2);
+  const Δφ = toRad(lat2 - lat1);
+  const Δλ = toRad(lon2 - lon1);
+
   const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * (Math.PI / 180)) *
-      Math.cos(lat2 * (Math.PI / 180)) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
+    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+  return R * c; // meters
 };
 
-/* ------------------------------------------------------------------
- * Hard‑coded threat zones (free, no API key)
- * ------------------------------------------------------------------ */
-const THREAT_ZONES: ThreatZone[] = [
-  // Kashmir – high political tension & armed clashes
-  {
-    id: "kashmir",
-    name: "Kashmir Conflict Zone",
-    latitude: 34.085,
-    longitude: 74.771,
-    radius: 20000, // 20 km
-    color: "#ff001a",
-    description:
-      "High risk area with frequent clashes. Avoid if possible.",
-  },
-  // Chhattisgarh forest fire hotspot
-  {
-    id: "chhattisgarh",
-    name: "Chhattisgarh Forest Fire Hotspot",
-    latitude: 21.593,
-    longitude: 82.580,
-    radius: 15000,
-    color: "#ffa500",
-    description:
-      "Recent forest fires reported in this area. Avoid travel.",
-  },
-  // Arunachal Pradesh – remote border area
-  {
-    id: "arunachal",
-    name: "Arunachal Pradesh Border Area",
-    latitude: 27.223,
-    longitude: 94.860,
-    radius: 25000,
-    color: "#ff7f00",
-    description:
-      "Border area with limited services. Proceed with caution.",
-  },
-  // Andaman & Nicobar Islands – restricted zones for foreigners
-  {
-    id: "andaman",
-    name: "Andaman Restricted Zone",
-    latitude: 13.743,
-    longitude: 93.324,
-    radius: 20000,
-    color: "#ff0066",
-    description:
-      "Restricted military zone. Non‑residents not permitted.",
-  },
-  // Additional zones can be added in the same pattern
-];
-
-/* ------------------------------------------------------------------
- * Main component
- * ------------------------------------------------------------------ */
+/*** ================== COMPONENT ================== ***/
 const Dashboard = () => {
+  /* ---------- ORIGINAL STATE ---------- */
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(
-    null,
+    null
   );
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<any[]>([]);
-  const [isSafe, setIsSafe] = useState(true); // Safe/Unsafe relative to threat zones
+  const [isSafe, setIsSafe] = useState(true); // Safe / Unsafe
   const [activeTab, setActiveTab] = useState("dashboard");
 
+  /* ---------- NEW STATE ---------- */
+  const [alertZones, setAlertZones] = useState<AlertZone[]>([]);
+  const [safetyScore, setSafetyScore] = useState(100);
+  const [inThreatZone, setInThreatZone] = useState<Record<string, boolean>>(
+    {}
+  );
+
+  /* ---------- MAP & MARKERS ---------- */
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<any>(null);
   const markerRef = useRef<any>(null);
   const isFirstLoad = useRef(true);
 
-  /* ------------------------------------------------------------------
-   * Geofencing state for destinations
-   * ------------------------------------------------------------------ */
+  /* ---------- GEOFENCE ---------- */
   const geofenceStatus = useRef<Record<string, boolean>>({});
   const geofenceCircles = useRef<Record<string, any>>({});
-  const GEOFENCE_RADIUS = 3000; // meters
+  const GEOFENCE_RADIUS = 3000; // m
 
-  /* ------------------------------------------------------------------
-   * Threat Zone state
-   * ------------------------------------------------------------------ */
-  const threatStatus = useRef<Record<string, boolean>>({}); // inside / outside
-  const threatCircles = useRef<Record<string, any>>({}); // google maps Circle refs
-
-  /* ------------------------------------------------------------------
-   * Beep sound
-   * ------------------------------------------------------------------ */
+  /* ---------- AUDIO ---------- */
   const beepRef = useRef<HTMLAudioElement | null>(null);
 
+  /* ---------- NAV & TOAST ---------- */
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  /* ------------------------------------------------------------------
-   * Unlock audio after first user interaction
-   * ------------------------------------------------------------------ */
+  /* ---------- UNLOCK AUDIO ---------- */
   useEffect(() => {
     const unlockAudio = () => {
       if (beepRef.current) {
@@ -174,9 +118,7 @@ const Dashboard = () => {
     window.addEventListener("click", unlockAudio);
   }, []);
 
-  /* ------------------------------------------------------------------
-   * Authentication & profile check
-   * ------------------------------------------------------------------ */
+  /* ---------- AUTH + PROFILE ---------- */
   useEffect(() => {
     const getUser = async () => {
       const {
@@ -185,14 +127,14 @@ const Dashboard = () => {
       if (user) {
         setUser(user);
 
-        // Check user profile completeness
+        /*--- profile check ---*/
         const { data: profile } = await supabase
           .from("profiles")
           .select("nationality, phone")
           .eq("user_id", user.id)
           .maybeSingle();
 
-        if (!profile || !profile.nationality || !profile.phone) {
+        if (!profile?.nationality || !profile?.phone) {
           navigate("/profile-completion");
           return;
         }
@@ -206,27 +148,23 @@ const Dashboard = () => {
     getUser();
 
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_OUT" || !session) {
-        navigate("/signin");
-      }
+      if (event === "SIGNED_OUT" || !session) navigate("/signin");
     });
 
     return () => data.subscription.unsubscribe();
   }, [navigate]);
 
-  /* ------------------------------------------------------------------
-   * Real‑time location, Google Map & Geo‑/Threat‑fencing
-   * ------------------------------------------------------------------ */
+  /* ---------- REAL‑TIME LOCATION + MAP + GEOFENCE + THREATS ---------- */
   useEffect(() => {
     if (!("geolocation" in navigator)) return;
 
     const watchId = navigator.geolocation.watchPosition(
-      (pos) => {
+      async (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         setLocation({ lat, lng });
 
-        /* ---- Google Map init ------------------------------------- */
+        /* -- MAP INITIALISATION -- */
         if (mapRef.current && !mapInstance.current && (window as any).google) {
           mapInstance.current = new (window as any).google.maps.Map(mapRef.current, {
             center: { lat, lng },
@@ -238,12 +176,25 @@ const Dashboard = () => {
             map: mapInstance.current,
             title: "You are here",
           });
+        }
 
-          /* ---- Draw destination circles --------------------------------- */
+        /* -- UPDATE USER MARKER -- */
+        if (markerRef.current) {
+          markerRef.current.setPosition({ lat, lng });
+        }
+
+        /* -- PAN ON FIRST LOAD ONLY -- */
+        if (mapInstance.current && isFirstLoad.current) {
+          mapInstance.current.panTo({ lat, lng });
+          isFirstLoad.current = false;
+        }
+
+        /* -- DRAW NORMAL GEOFECKS -- */
+        if (mapInstance.current) {
           destinations.forEach((dest) => {
             if (dest.latitude && dest.longitude) {
               if (!geofenceCircles.current[dest.id]) {
-                geofenceCircles.current[dest.id] = new (window as any).google.maps.Circle({
+                const circle = new (window as any).google.maps.Circle({
                   strokeColor: "#00FF00",
                   strokeOpacity: 0.8,
                   strokeWeight: 2,
@@ -253,114 +204,118 @@ const Dashboard = () => {
                   center: { lat: dest.latitude, lng: dest.longitude },
                   radius: GEOFENCE_RADIUS,
                 });
+                geofenceCircles.current[dest.id] = circle;
               }
             }
           });
 
-          /* ---- Draw threat zone circles --------------------------------- */
-          THREAT_ZONES.forEach((zone) => {
-            if (!threatCircles.current[zone.id]) {
-              threatCircles.current[zone.id] = new (window as any).google.maps.Circle({
-                strokeColor: zone.color,
-                strokeOpacity: 0.9,
+          // Remove circles for deleted destinations
+          Object.keys(geofenceCircles.current).forEach((id) => {
+            if (!destinations.find((d) => d.id === id)) {
+              geofenceCircles.current[id].setMap(null);
+              delete geofenceCircles.current[id];
+            }
+          });
+
+          /* ---- THREAT ZONES ON MAP ---- */
+          alertZones.forEach((zone) => {
+            if (!mapInstance.current) return;
+            const key = `threat-${zone.id}`;
+            if (!mapInstance.current[key]) {
+              const circle = new (window as any).google.maps.Circle({
+                strokeColor: getSeverityColor(zone.severity),
+                strokeOpacity: 0.8,
                 strokeWeight: 2,
-                fillColor: zone.color,
-                fillOpacity: 0.15,
+                fillColor: getSeverityColor(zone.severity),
+                fillOpacity: 0.2,
                 map: mapInstance.current,
-                center: { lat: zone.latitude, lng: zone.longitude },
-                radius: zone.radius,
+                center: { lat: zone.lat, lng: zone.lng },
+                radius: zone.radiusMeters,
               });
+              // store reference on map so we can remove later
+              mapInstance.current[key] = circle;
             }
           });
         }
 
-        /* ---- Update user marker ------------------------------------- */
-        if (markerRef.current) {
-          markerRef.current.setPosition({ lat, lng });
-        }
-
-        /* ---- Pan only on first load ------------------------------- */
-        if (mapInstance.current && isFirstLoad.current) {
-          mapInstance.current.panTo({ lat, lng });
-          isFirstLoad.current = false;
-        }
-
-        /* ---- Geofence check ---------------------------------------- */
+        /* -- CHECK GEOFECKS AND THREATS -- */
         if (user && destinations.length > 0) {
           let insideAnyGeofence = false;
 
           destinations.forEach((dest) => {
-            if (dest.latitude && dest.longitude) {
-              const distance = getDistance(lat, lng, dest.latitude, dest.longitude);
-              const isInside = distance <= GEOFENCE_RADIUS;
-              const wasInside = geofenceStatus.current[dest.id] || false;
+            if (!dest.latitude || !dest.longitude) return;
+            const distance = getDistance(
+              lat,
+              lng,
+              dest.latitude,
+              dest.longitude
+            );
+            const isInside = distance <= GEOFENCE_RADIUS;
+            const wasInside = geofenceStatus.current[dest.id] || false;
 
-              if (isInside) insideAnyGeofence = true;
-
-              if (isInside && !wasInside) {
-                toast({
-                  title: "📍 Geofence Entered",
-                  description: `You entered the area of ${dest.name}`,
-                });
-                geofenceStatus.current[dest.id] = true;
-              }
-
-              if (!isInside && wasInside) {
-                toast({
-                  title: "🚪 Geofence Exited",
-                  description: `You left the area of ${dest.name}`,
-                  variant: "destructive",
-                });
-
-                if (beepRef.current) {
-                  beepRef.current.currentTime = 0;
-                  beepRef.current.play().catch(() => {
-                    console.warn("Autoplay prevented. User interaction required.");
-                  });
-                }
-
-                geofenceStatus.current[dest.id] = false;
-              }
-            }
-          });
-
-          setIsSafe(insideAnyGeofence);
-        }
-
-        /* ---- Threat zone check ------------------------------------- */
-        if (THREAT_ZONES.length > 0) {
-          let insideAnyThreat = false;
-
-          THREAT_ZONES.forEach((zone) => {
-            const distance = getDistance(lat, lng, zone.latitude, zone.longitude);
-            const isInside = distance <= zone.radius;
-            const wasInside = threatStatus.current[zone.id] || false;
-
-            if (isInside) insideAnyThreat = true;
+            if (isInside) insideAnyGeofence = true;
 
             if (isInside && !wasInside) {
               toast({
-                title: "⚠️ High‑Risk Area",
-                description: `${zone.name} – ${zone.description ?? "High risk!"}`,
+                title: "📍 Geofence Entered",
+                description: `You entered the area of ${dest.name}`,
               });
-              threatStatus.current[zone.id] = true;
             }
-
             if (!isInside && wasInside) {
               toast({
-                title: "✅ Safe Zone",
-                description: `You left ${zone.name}`,
-                variant: "success",
+                title: "🚪 Geofence Exited",
+                description: `You left the area of ${dest.name}`,
+                variant: "destructive",
               });
-              threatStatus.current[zone.id] = false;
             }
+            geofenceStatus.current[dest.id] = isInside;
           });
 
-          /* Update UI flag – if any threat is active => unsafe */
-          setIsSafe(!insideAnyThreat);
+          /* ---- THREAT ZONE CHECKS ---- */
+          let inAnyThreat = false;
+          alertZones.forEach((zone) => {
+            const d = getDistance(lat, lng, zone.lat, zone.lng);
+            const inside = d <= zone.radiusMeters;
+            const wasInside = inThreatZone[zone.id] || false;
+
+            if (inside) inAnyThreat = true;
+
+            if (inside && !wasInside) {
+              toast({
+                title: `⚠️ Threat – ${zone.title}`,
+                description: zone.description,
+                variant: "destructive",
+              });
+            }
+            if (!inside && wasInside) {
+              toast({
+                title: `🚪 Left Threat – ${zone.title}`,
+                description: zone.description,
+                variant: "destructive",
+              });
+            }
+            inThreatZone[zone.id] = inside;
+          });
+
+          /* ---- UPDATE SAFE/UNSAFE STATUS ---- */
+          setIsSafe(insideAnyGeofence && !inAnyThreat);
+
+          /* ---- UPDATE SAFETY SCORE ---- */
+          const score = calculateSafetyScore(alertZones, lat, lng);
+          setSafetyScore(score);
+
+          /* ---- PLAY BEEP ON EXIT OF THREAT ZONE ---- */
+          if (!inAnyThreat && Object.values(inThreatZone).some(Boolean)) {
+            if (beepRef.current) {
+              beepRef.current.currentTime = 0;
+              beepRef.current.play().catch(() => {
+                console.warn("Autoplay prevented. User interaction required.");
+              });
+            }
+          }
         }
 
-        /* ---- Update user location in DB (every poll) --------------- */
+        /* ---- UPDATE USER LOCATION IN DB ---- */
         if (user) {
           updateUserLocation(user.id, lat, lng);
         }
@@ -373,56 +328,28 @@ const Dashboard = () => {
           variant: "destructive",
         });
       },
-      { enableHighAccuracy: true, maximumAge: 0 },
+      { enableHighAccuracy: true, maximumAge: 0 }
     );
 
     return () => navigator.geolocation.clearWatch(watchId);
-  }, [toast, destinations, user]);
+  }, [toast, destinations, alertZones, user]);
 
-  /* ------------------------------------------------------------------
-   * Periodic location uploads (every 15 s)
-   * ------------------------------------------------------------------ */
+  /* ---------- USER LOCATION UPDATE EVERY 15 SECONDS ---------- */
   useEffect(() => {
     if (!user || !location) return;
 
-    const locationInterval = setInterval(() => {
+    const interval = setInterval(() => {
       if (location && user) {
         updateUserLocation(user.id, location.lat, location.lng);
       }
-    }, 15000);
+    }, 15000); // 15 seconds
 
-    return () => clearInterval(locationInterval);
+    return () => clearInterval(interval);
   }, [user, location]);
 
-  /* ------------------------------------------------------------------
-   * Update user location helper
-   * ------------------------------------------------------------------ */
-  const updateUserLocation = async (
-    userId: string,
-    latitude: number,
-    longitude: number,
-  ) => {
-    try {
-      // Replace old location first
-      await supabase.from("user_locations").delete().eq("user_id", userId);
-
-      // Then insert new location
-      const { error } = await supabase
-        .from("user_locations")
-        .insert({ user_id: userId, latitude, longitude });
-
-      if (error) throw error;
-    } catch (error: any) {
-      console.error("Error updating location:", error);
-    }
-  };
-
-  /* ------------------------------------------------------------------
-   * Panic button handler
-   * ------------------------------------------------------------------ */
+  /* ---------- PANIC BUTTON ---------- */
   const handlePanicButton = async () => {
     if (!user || !location) return;
-
     try {
       const { error } = await supabase
         .from("panic_alerts")
@@ -433,9 +360,7 @@ const Dashboard = () => {
           longitude: location.lng,
           status: "active",
         });
-
       if (error) throw error;
-
       toast({
         title: "🚨 Panic Alert Sent!",
         description: "Emergency services have been notified of your location.",
@@ -450,9 +375,7 @@ const Dashboard = () => {
     }
   };
 
-  /* ------------------------------------------------------------------
-   * Fetch destinations
-   * ------------------------------------------------------------------ */
+  /* ---------- FETCH DESTINATIONS ---------- */
   const fetchDestinations = async (userId: string) => {
     try {
       const { data, error } = await supabase
@@ -460,7 +383,6 @@ const Dashboard = () => {
         .select("*")
         .eq("user_id", userId)
         .order("created_at", { ascending: false });
-
       if (error) throw error;
       setDestinations(data || []);
     } catch (error: any) {
@@ -472,9 +394,7 @@ const Dashboard = () => {
     }
   };
 
-  /* ------------------------------------------------------------------
-   * Sign‑out handler
-   * ------------------------------------------------------------------ */
+  /* ---------- SIGN OUT ---------- */
   const handleSignOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
@@ -492,9 +412,7 @@ const Dashboard = () => {
     }
   };
 
-  /* ------------------------------------------------------------------
-   * Debounce for location suggestions
-   * ------------------------------------------------------------------ */
+  /* ---------- DEBOUNCE ---------- */
   const debounce = (func: Function, delay: number) => {
     let timer: NodeJS.Timeout;
     return (...args: any[]) => {
@@ -505,9 +423,7 @@ const Dashboard = () => {
     };
   };
 
-  /* ------------------------------------------------------------------
-   * Photon search for suggestions
-   * ------------------------------------------------------------------ */
+  /* ---------- PHOTON SUGGESTIONS ---------- */
   const fetchSuggestions = async (value: string) => {
     setQuery(value);
     if (value.length < 3) {
@@ -516,22 +432,19 @@ const Dashboard = () => {
     }
     try {
       const res = await fetch(
-        `https://photon.komoot.io/api/?q=${encodeURIComponent(value)}&limit=10`,
+        `https://photon.komoot.io/api/?q=${encodeURIComponent(value)}&limit=10`
       );
       const data = await res.json();
-      if (data && data.features) {
-        setSuggestions(data.features);
-      }
+      if (data && data.features) setSuggestions(data.features);
     } catch (err) {
       console.error("Error fetching location suggestions:", err);
     }
   };
 
-  const debouncedFetchSuggestions = useRef(debounce(fetchSuggestions, 400)).current;
+  const debouncedFetchSuggestions = useRef(debounce(fetchSuggestions, 400))
+    .current;
 
-  /* ------------------------------------------------------------------
-   * Add a destination
-   * ------------------------------------------------------------------ */
+  /* ---------- ADD DESTINATION ---------- */
   const addDestination = async (place: any) => {
     if (!user) return;
     try {
@@ -563,9 +476,7 @@ const Dashboard = () => {
     }
   };
 
-  /* ------------------------------------------------------------------
-   * Remove an existing destination
-   * ------------------------------------------------------------------ */
+  /* ---------- REMOVE DESTINATION ---------- */
   const removeDestination = async (destinationId: string) => {
     try {
       const { error } = await supabase
@@ -574,7 +485,7 @@ const Dashboard = () => {
         .eq("id", destinationId);
       if (error) throw error;
       setDestinations((prev) =>
-        prev.filter((dest) => dest.id !== destinationId),
+        prev.filter((dest) => dest.id !== destinationId)
       );
       toast({
         title: "Destination removed",
@@ -589,9 +500,140 @@ const Dashboard = () => {
     }
   };
 
-  /* ------------------------------------------------------------------
-   * Loading state
-   * ------------------------------------------------------------------ */
+  /* ---------- USER LOCATION UPDATE IN DB helper ---------- */
+  const updateUserLocation = async (
+    userId: string,
+    latitude: number,
+    longitude: number
+  ) => {
+    try {
+      await supabase
+        .from("user_locations")
+        .delete()
+        .eq("user_id", userId);
+      const { error } = await supabase
+        .from("user_locations")
+        .insert({ user_id: userId, latitude, longitude });
+      if (error) throw error;
+    } catch (error: any) {
+      console.error("Error updating location:", error);
+    }
+  };
+
+  /* ---------- FETCH LIVE THREAT ALERTS ---------- */
+  useEffect(() => {
+    const loadThreatZones = async () => {
+      try {
+        // SACHET CAP feed URL – only Indian alerts are usually included
+        const feedUrl = "https://sachet.ndma.gov.in/CapFeed";
+        const resp = await fetch(feedUrl);
+        const xmlText = await resp.text();
+        const parser = new DOMParser();
+        const xml = parser.parseFromString(xmlText, "application/xml");
+
+        const alerts = Array.from(xml.getElementsByTagName("alert"));
+        const zones: AlertZone[] = alerts
+          .map((alertEl) => {
+            try {
+              const identifier = alertEl
+                .getElementsByTagName("identifier")[0]
+                ?.textContent?.trim() || "";
+              const info = alertEl.getElementsByTagName("info")[0];
+              if (!info) return null;
+
+              const area = info.getElementsByTagName("area")[0];
+              if (!area) return null;
+
+              const geocodeElems = area.getElementsByTagName("geocode");
+              // Only keep alerts that explicitly fall under India or use a basic country filter later
+              const countryCode =
+                geocodeElems[0]?.getElementsByTagName("value")[0]
+                  ?.textContent?.trim() || "";
+
+              if (countryCode !== "IN") return null; // filter out non‑India alerts
+
+              const circle = area.getElementsByTagName("circle")[0]
+                ?.textContent?.trim();
+
+              if (!circle) return null;
+
+              const parts = circle.split(" ");
+              const [latLng, radiusKm] = parts;
+              const [lat, lng] = latLng.split(",").map(Number);
+              const radiusMeters = parseFloat(radiusKm) * 1000;
+
+              const severityTag = info.getElementsByTagName("severity")[0]
+                ?.textContent?.trim();
+
+              let severity: "low" | "medium" | "high" = "low";
+              if (severityTag?.toLowerCase() === "moderate")
+                severity = "medium";
+              else if (severityTag?.toLowerCase() === "severe")
+                severity = "high";
+
+              return {
+                id: identifier,
+                title: info
+                  .getElementsByTagName("event")[0]
+                  ?.textContent?.trim() ?? "Alert",
+                description:
+                  info.getElementsByTagName("description")[0]
+                    ?.textContent?.trim() ?? "",
+                lat,
+                lng,
+                radiusMeters,
+                severity,
+              };
+            } catch (err) {
+              console.error("Alert parse error:", err);
+              return null;
+            }
+          })
+          .filter((z): z is AlertZone => !!z);
+
+        setAlertZones(zones);
+      } catch (err) {
+        console.error("Error fetching threat alerts:", err);
+      }
+    };
+
+    // load immediately and every 5 minutes
+    loadThreatZones();
+    const iv = setInterval(loadThreatZones, 5 * 60 * 1000);
+    return () => clearInterval(iv);
+  }, []);
+
+  /* ---------- UTILS FOR THREATS / UI ---------- */
+  const getSeverityColor = (severity: AlertZone["severity"]) => {
+    switch (severity) {
+      case "high":
+        return "#e52e2e"; // red
+      case "medium":
+        return "#e5a52e"; // orange
+      default:
+        return "#2e7ae5"; // blue
+    }
+  };
+
+  const calculateSafetyScore = (
+    zones: AlertZone[],
+    lat: number,
+    lng: number
+  ): number => {
+    let score = 100;
+    zones.forEach((zone) => {
+      const d = getDistance(lat, lng, zone.lat, zone.lng);
+      if (d <= zone.radiusMeters) {
+        if (zone.severity === "high") score -= 40;
+        else if (zone.severity === "medium") score -= 20;
+        else score -= 10;
+      }
+    });
+    if (score < 0) score = 0;
+    return score;
+  };
+
+  /* ---------- RENDER ---------- */
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary/20 to-accent/10">
@@ -602,20 +644,14 @@ const Dashboard = () => {
 
   if (!user) return null;
 
-  /* ------------------------------------------------------------------
-   * Main JSX
-   * ------------------------------------------------------------------ */
   return (
     <div
       className="min-h-screen bg-cover bg-center bg-no-repeat"
       style={{ backgroundImage: "url('/mountainbg.jpg')" }}
     >
-      {/* Hidden audio player for the beep sound */}
       <audio ref={beepRef} src="/beep.mp3" preload="auto" />
 
-      {/* Gradient overlay */}
       <div className="min-h-screen bg-gradient-to-br from-white/40 via-white/30 to-white/20">
-        {/* Header */}
         <header className="border-b bg-card/95 backdrop-blur-sm sticky top-0 z-50">
           <div className="container mx-auto px-4 py-4">
             <div className="flex items-center justify-between">
@@ -652,20 +688,15 @@ const Dashboard = () => {
           </div>
         </header>
 
-        {/* Main Content */}
         <main className="container mx-auto px-4 py-8">
-          <Tabs
-            value={activeTab}
-            onValueChange={setActiveTab}
-            className="space-y-6"
-          >
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
               <TabsTrigger value="helpdesk">Help & Support</TabsTrigger>
             </TabsList>
 
+            {/* ====================== DASHBOARD ====================== */}
             <TabsContent value="dashboard" className="space-y-6">
-              {/* Welcome card */}
               <Card className="bg-gradient-to-r from-primary to-accent text-white border-0 shadow-xl">
                 <CardHeader className="pb-6">
                   <div className="flex items-center justify-between">
@@ -675,7 +706,7 @@ const Dashboard = () => {
                       </div>
                       <div>
                         <CardTitle className="text-3xl font-bold">
-                          Welcome,
+                          Welcome,{" "}
                           {user.user_metadata?.full_name ||
                             user.email?.split("@")[0]}
                           !
@@ -699,7 +730,7 @@ const Dashboard = () => {
                 </CardHeader>
               </Card>
 
-              {/* Live location map */}
+              {/* === YOUR LOCATION MAP === */}
               {location && (
                 <Card>
                   <CardHeader>
@@ -714,13 +745,20 @@ const Dashboard = () => {
                     <div className="mt-2">
                       {isSafe ? (
                         <span className="px-3 py-1 rounded-full bg-green-500 text-white font-semibold">
-                          ✅ Safe (Outside Threat Zones)
+                          ✅ Safe (Inside Geofence)
                         </span>
                       ) : (
                         <span className="px-3 py-1 rounded-full bg-red-500 text-white font-semibold">
-                          ⚠️ Unsafe (Inside Threat Zone)
+                          ⚠️ Unsafe (Outside Geofence)
                         </span>
                       )}
+                    </div>
+
+                    {/* New: Safety Score indicator */}
+                    <div className="mt-2">
+                      <span className="px-3 py-1 rounded-full bg-indigo-500 text-white font-semibold">
+                        Safety Score: {safetyScore}
+                      </span>
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -729,7 +767,7 @@ const Dashboard = () => {
                 </Card>
               )}
 
-              {/* Destinations search + list */}
+              {/* === DESTINATIONS LIST + SEARCH === */}
               <Card>
                 <CardHeader>
                   <CardTitle className="text-2xl font-bold">
@@ -795,7 +833,7 @@ const Dashboard = () => {
               </Card>
             </TabsContent>
 
-            {/* Help & Support tab */}
+            {/* ====================== HELP DESK ====================== */}
             <TabsContent value="helpdesk">
               <Card>
                 <CardHeader>
@@ -804,8 +842,7 @@ const Dashboard = () => {
                     Help & Support
                   </CardTitle>
                   <CardDescription>
-                    Get assistance from our support team. You can send
-                    messages and images.
+                    Get assistance from our support team. You can send messages and images.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -821,4 +858,5 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+
 
