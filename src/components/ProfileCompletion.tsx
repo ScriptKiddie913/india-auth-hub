@@ -1,13 +1,12 @@
 /* =======================================================
-   Profile-completion page – 100% vanilla TS + React
-   ------------------------------------------------------
-   Integrated with blockchain:
-   * Pulls MetaMask wallet if not already stored
-   * Generates a unique ID
-   * Persists wallet_address + unique_id in Supabase
-   * Calls the Registry smart contract (register)
-   * Stores the tx hash in Supabase
-   * Shows a clickable link to Etherscan
+   Profile-completion page – TS + React + Ethers v6
+   -------------------------------------------------------
+   * Pulls MetaMask wallet
+   * Generates unique ID (bytes32 hash)
+   * Persists wallet + unique_id in Supabase
+   * Calls Registry smart contract (register)
+   * Stores tx hash in Supabase
+   * Shows clickable link to Etherscan
    ======================================================= */
 
 import React, { useState } from "react";
@@ -112,9 +111,9 @@ const ProfileCompletion: React.FC = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not found");
 
-      /* 2) Get MetaMask wallet address + generate unique ID */
+      /* 2) Get MetaMask wallet + generate unique ID */
       const walletAddress = await getEthereumAccount();
-      const uniqueId = await generateUniqueId(walletAddress);
+      const uniqueId = generateUniqueId(walletAddress); // 0x... 64 hex chars
 
       /* 3) Build profile payload */
       const profileData = {
@@ -129,20 +128,29 @@ const ProfileCompletion: React.FC = () => {
         unique_id: uniqueId,
       };
 
-      /* 4) Save in Supabase profiles table */
+      /* 4) Save in Supabase */
       const { error: profileError } = await supabase
         .from("profiles")
         .upsert(profileData, { onConflict: "user_id" });
 
       if (profileError) throw profileError;
 
-      /* 5) Send blockchain transaction */
-      await registerOnChainAndPersist(uniqueId, user.id, toast);
+      /* 5) Send blockchain tx */
+      const txHash = await registerOnChainAndPersist(uniqueId, user.id, toast);
 
       /* 6) Success UI */
       toast({
         title: "Profile completed",
-        description: "Your profile is saved and registered on-chain.",
+        description: (
+          <a
+            href={`https://sepolia.etherscan.io/tx/${txHash}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline text-blue-500"
+          >
+            View transaction on Etherscan
+          </a>
+        ),
       });
 
       navigate("/dashboard");
