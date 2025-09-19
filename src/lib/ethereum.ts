@@ -1,114 +1,66 @@
-/* =======================================================
-   ethereum.ts – blockchain helpers
-   -------------------------------------------------------
-   Network: Sepolia ETH (MetaMask injected provider)
-   Contract: Registry.sol (bytes32 uniqueId)
-   ======================================================= */
-
-import { ethers } from "ethers";
+// src/lib/ethereum.ts
 import { supabase } from "@/integrations/supabase/client";
-import type { Toast } from "@/hooks/use-toast";
 
 /* ---------------- Contract config ---------------- */
-const CONTRACT_ADDRESS = "0x0d0A38A501B2AD98248eD7E17b6025D9a55F5044"; // <-- replace
-const CONTRACT_ABI = [
-  {
-    inputs: [{ internalType: "bytes32", name: "uniqueId", type: "bytes32" }],
-    name: "register",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [{ internalType: "address", name: "", type: "address" }],
-    name: "walletToId",
-    outputs: [{ internalType: "bytes32", name: "", type: "bytes32" }],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [{ internalType: "bytes32", name: "", type: "bytes32" }],
-    name: "idToWallet",
-    outputs: [{ internalType: "address", name: "", type: "address" }],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    anonymous: false,
-    inputs: [
-      { indexed: true, internalType: "address", name: "wallet", type: "address" },
-      { indexed: true, internalType: "bytes32", name: "uniqueId", type: "bytes32" },
-    ],
-    name: "Registered",
-    type: "event",
-  },
-];
+const CONTRACT_ADDRESS = "0x0d0A38A501B2AD98248eD7E17b6025D9a55F5044"; // replace if redeployed
+// Function selector for register(bytes32)
+const REGISTER_SELECTOR = "0x2f2ff15d";
 
-/* ---------------- Wallet helpers ---------------- */
+/* ---------------- Ethereum helpers ---------------- */
 export async function getEthereumAccount(): Promise<string> {
-  if (!(window as any).ethereum) {
-    throw new Error("MetaMask not found. Please install MetaMask.");
-  }
+  if (!(window as any).ethereum) throw new Error("MetaMask not found");
 
-  const provider = new ethers.BrowserProvider((window as any).ethereum);
+  const accounts: string[] = await (window as any).ethereum.request({
+    method: "eth_requestAccounts",
+  });
 
-  // Request accounts
-  await provider.send("eth_requestAccounts", []);
-  const signer = await provider.getSigner();
-  return signer.getAddress();
+  return accounts[0];
 }
 
-/* ---------------- ID generator (bytes32) ---------------- */
-export async function generateUniqueId(walletAddress: string): Promise<string> {
-  // Keccak256 hash of wallet + timestamp → bytes32 string
-  return ethers.keccak256(
-    ethers.toUtf8Bytes(walletAddress + Date.now().toString())
-  );
+export function generateUniqueId(): string {
+  // Random 32-byte hex string
+  const array = new Uint8Array(32);
+  crypto.getRandomValues(array);
+  return "0x" + Array.from(array).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-/* ---------------- On-chain registration ---------------- */
-export async function registerOnChainAndPersist(
-  uniqueId: string, // already bytes32 string
-  userId: string,
-  toast: Toast["toast"]
-) {
-  if (!(window as any).ethereum) {
-    throw new Error("MetaMask not found. Please install MetaMask.");
-  }
+export async function registerOnChainAndPersist(uniqueIdHex: string, userId?: string, toast?: any) {
+  if (!(window as any).ethereum) throw new Error("MetaMask not found");
 
-  const provider = new ethers.BrowserProvider((window as any).ethereum);
-  const signer = await provider.getSigner();
-  const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+  const from = await getEthereumAccount();
 
-  try {
-    // Call contract register(uniqueId)
-    const tx = await contract.register(uniqueId);
-    toast({
-      title: "Transaction sent",
-      description: `Tx hash: ${tx.hash.slice(0, 10)}...`,
-    });
+  // Build calldata: selector + 32-byte uniqueId
+  const data = REGISTER_SELECTOR + uniqueIdHex.slice(2).padEnd(64, "0");
 
-    // Wait for confirmation
-    await tx.wait();
+  // Send tx via MetaMask
+  const txHash: string = await (window as any).ethereum.request({
+    method: "eth_sendTransaction",
+    params: [
+      {
+        from,
+        to: CONTRACT_ADDRESS,
+        data,
+      },
+    ],
+  });
 
-    // Persist tx hash in Supabase
-    const { error } = await supabase.from("transactions").insert({
+  // Save in Supabase (optional)
+  if (userId) {
+    await supabase.from("registrations").insert({
       user_id: userId,
-      unique_id: uniqueId,
-      tx_hash: tx.hash,
-      network: "sepolia",
+      wallet: from,
+      unique_id: uniqueIdHex,
+      tx_hash: txHash,
     });
-
-    if (error) throw error;
-
-    toast({
-      title: "Transaction confirmed",
-      description: "Your profile is now on-chain ✅",
-    });
-
-    return tx;
-  } catch (err: any) {
-    console.error(err);
-    throw new Error(err.message || "Failed to register on-chain");
   }
+
+  if (toast) {
+    toast({
+      title: "On-chain registration sent",
+      description: `Tx hash: ${txHash.slice(0, 10)}...`,
+    });
+  }
+
+  return txHash;
 }
+
