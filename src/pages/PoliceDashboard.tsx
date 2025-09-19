@@ -93,7 +93,6 @@ const PoliceDashboard: React.FC = () => {
     const initMap = () => {
       if (!mapRef.current || mapInstance.current) return;
 
-      console.log("✅ Initializing Google Map...");
       mapInstance.current = new (window as any).google.maps.Map(mapRef.current, {
         center: { lat: 22.5726, lng: 88.3639 }, // Kolkata
         zoom: 12,
@@ -110,19 +109,11 @@ const PoliceDashboard: React.FC = () => {
         const script = document.createElement("script");
         script.id = scriptId;
         script.src =
-          "https://maps.googleapis.com/maps/api/js?key=AIzaSyBU7z2W7aE4T6TSV7SqEk0UJiyjAC97UW8&libraries=places";
+          "https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=places";
         script.async = true;
         script.defer = true;
 
-        script.onload = () => {
-          console.log("✅ Google Maps script loaded");
-          initMap();
-        };
-
-        script.onerror = () => {
-          console.error("❌ Failed to load Google Maps script");
-        };
-
+        script.onload = initMap;
         document.body.appendChild(script);
       } else {
         document.getElementById(scriptId)?.addEventListener("load", initMap);
@@ -232,7 +223,6 @@ const PoliceDashboard: React.FC = () => {
     ]);
 
     if (error) {
-      console.error("Supabase insert error:", error);
       toast({
         title: "Error",
         description: "Failed to post advisory: " + error.message,
@@ -244,6 +234,22 @@ const PoliceDashboard: React.FC = () => {
       setAdvisoryLat("");
       setAdvisoryLng("");
       fetchLiveThreads();
+    }
+  };
+
+  /* ✅ Delete advisory */
+  const handleDeleteAdvisory = async (id: string) => {
+    const { error } = await supabase.from("live_threads").delete().eq("id", id);
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete advisory",
+        variant: "destructive",
+      });
+    } else {
+      setLiveThreads((prev) => prev.filter((adv) => adv.id !== id));
+      toast({ title: "Success", description: "Advisory deleted" });
     }
   };
 
@@ -344,16 +350,9 @@ const PoliceDashboard: React.FC = () => {
                         onClick={() => setSelectedAlert(alert)}
                       >
                         <div>
-                          <p>
-                            <strong>ID:</strong> {alert.id}
-                          </p>
-                          <p>
-                            <strong>Status:</strong> {alert.status}
-                          </p>
-                          <p>
-                            <strong>Time:</strong>{" "}
-                            {new Date(alert.created_at).toLocaleString()}
-                          </p>
+                          <p><strong>ID:</strong> {alert.id}</p>
+                          <p><strong>Status:</strong> {alert.status}</p>
+                          <p><strong>Time:</strong> {new Date(alert.created_at).toLocaleString()}</p>
                         </div>
                         {alert.status !== "resolved" && (
                           <Button
@@ -403,6 +402,39 @@ const PoliceDashboard: React.FC = () => {
             className="w-full border p-2 rounded"
           />
           <Button onClick={handlePostAdvisory}>Post Advisory</Button>
+        </CardContent>
+      </Card>
+
+      {/* Advisory List Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>All Police Advisories</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {liveThreads.length === 0 ? (
+            <p>No advisories</p>
+          ) : (
+            <ul className="space-y-3">
+              {liveThreads.map((adv) => (
+                <li
+                  key={adv.id}
+                  className="p-3 border rounded-lg shadow flex justify-between items-center"
+                >
+                  <div>
+                    <p><strong>Message:</strong> {adv.message}</p>
+                    <p><strong>Location:</strong> {adv.latitude}, {adv.longitude}</p>
+                    <p><strong>Posted:</strong> {new Date(adv.created_at).toLocaleString()}</p>
+                  </div>
+                  <Button
+                    variant="destructive"
+                    onClick={() => handleDeleteAdvisory(adv.id)}
+                  >
+                    Delete
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
         </CardContent>
       </Card>
 
