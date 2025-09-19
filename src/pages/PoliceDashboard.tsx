@@ -1,3 +1,4 @@
+// src/pages/PoliceDashboard.tsx
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -22,13 +23,10 @@ interface PanicAlert {
   created_at: string;
 }
 
-const GOOGLE_MAPS_API_KEY = "AIzaSyBU7z2W7aE4T6TSV7SqEk0UJiyjAC97UW8";
-
 const PoliceDashboard: React.FC = () => {
   const [panicAlerts, setPanicAlerts] = useState<PanicAlert[]>([]);
   const [filter, setFilter] = useState<"all" | "active" | "resolved">("all");
   const [selectedAlert, setSelectedAlert] = useState<PanicAlert | null>(null);
-
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -36,7 +34,7 @@ const PoliceDashboard: React.FC = () => {
   const mapInstance = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
 
-  /* ✅ Fetch panic alerts from Supabase */
+  /* ✅ Fetch panic alerts */
   const fetchPanicAlerts = async () => {
     const { data, error } = await supabase
       .from("panic_alerts")
@@ -56,17 +54,20 @@ const PoliceDashboard: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  /* ✅ Load Google Maps script */
+  /* ✅ Initialize Google Map */
   useEffect(() => {
     const initMap = () => {
       if (!mapRef.current || mapInstance.current) return;
 
+      console.log("✅ Initializing Google Map...");
       mapInstance.current = new (window as any).google.maps.Map(mapRef.current, {
         center: { lat: 22.5726, lng: 88.3639 }, // Kolkata
         zoom: 12,
       });
 
-      updateMarkers(panicAlerts);
+      if (panicAlerts.length > 0) {
+        updateMarkers(panicAlerts);
+      }
     };
 
     const scriptId = "google-maps-script";
@@ -74,32 +75,42 @@ const PoliceDashboard: React.FC = () => {
       if (!document.getElementById(scriptId)) {
         const script = document.createElement("script");
         script.id = scriptId;
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places`;
+        script.src =
+          "https://maps.googleapis.com/maps/api/js?key=AIzaSyBU7z2W7aE4T6TSV7SqEk0UJiyjAC97UW8&libraries=places";
         script.async = true;
         script.defer = true;
 
-        script.onload = initMap;
+        script.onload = () => {
+          console.log("✅ Google Maps script loaded");
+          initMap();
+        };
+
         script.onerror = () => {
-          toast({
-            title: "Google Maps Error",
-            description: "Failed to load map. Check API key restrictions.",
-            variant: "destructive",
-          });
+          console.error("❌ Failed to load Google Maps script");
         };
 
         document.body.appendChild(script);
+      } else {
+        document.getElementById(scriptId)?.addEventListener("load", initMap);
       }
     } else {
       initMap();
     }
+  }, []);
+
+  /* ✅ Update markers whenever alerts change */
+  useEffect(() => {
+    if (mapInstance.current && panicAlerts.length > 0) {
+      updateMarkers(panicAlerts);
+    }
   }, [panicAlerts]);
 
-  /* ✅ Update markers */
+  /* ✅ Update markers on the map */
   const updateMarkers = (alerts: PanicAlert[]) => {
     if (!mapInstance.current || !(window as any).google) return;
 
     // Clear old markers
-    markersRef.current.forEach((m) => m.setMap(null));
+    markersRef.current.forEach((marker) => marker.setMap(null));
     markersRef.current = [];
 
     alerts.forEach((alert) => {
@@ -107,13 +118,21 @@ const PoliceDashboard: React.FC = () => {
         position: { lat: alert.latitude, lng: alert.longitude },
         map: mapInstance.current,
         title: `Alert ID: ${alert.id}`,
-        icon:
-          alert.status === "resolved"
-            ? "http://maps.google.com/mapfiles/ms/icons/green-dot.png"
-            : "http://maps.google.com/mapfiles/ms/icons/red-dot.png",
       });
 
-      marker.addListener("click", () => setSelectedAlert(alert));
+      const infowindow = new (window as any).google.maps.InfoWindow({
+        content: `<div>
+          <strong>Alert ID:</strong> ${alert.id}<br/>
+          <strong>Status:</strong> ${alert.status}<br/>
+          <strong>Time:</strong> ${new Date(alert.created_at).toLocaleString()}
+        </div>`,
+      });
+
+      marker.addListener("click", () => {
+        infowindow.open(mapInstance.current, marker);
+        setSelectedAlert(alert);
+      });
+
       markersRef.current.push(marker);
     });
   };
@@ -126,12 +145,18 @@ const PoliceDashboard: React.FC = () => {
       .eq("id", id);
 
     if (error) {
-      toast({ title: "Error", description: "Failed to resolve alert", variant: "destructive" });
+      toast({
+        title: "Error",
+        description: "Failed to resolve alert",
+        variant: "destructive",
+      });
     } else {
       setPanicAlerts((prev) =>
-        prev.map((a) => (a.id === id ? { ...a, status: "resolved" } : a))
+        prev.map((alert) =>
+          alert.id === id ? { ...alert, status: "resolved" } : alert
+        )
       );
-      toast({ title: "✅ Success", description: "Alert marked as resolved" });
+      toast({ title: "Success", description: "Alert marked as resolved" });
     }
   };
 
@@ -141,9 +166,13 @@ const PoliceDashboard: React.FC = () => {
     navigate("/police-signin");
   };
 
-  /* ✅ Filters & Stats */
+  /* ✅ Filters + Stats */
   const filteredAlerts =
-    filter === "all" ? panicAlerts : panicAlerts.filter((a) => a.status === filter);
+    filter === "all"
+      ? panicAlerts
+      : panicAlerts.filter((a) =>
+          filter === "resolved" ? a.status === "resolved" : a.status !== "resolved"
+        );
 
   const activeCount = panicAlerts.filter((a) => a.status !== "resolved").length;
   const resolvedCount = panicAlerts.filter((a) => a.status === "resolved").length;
@@ -201,7 +230,7 @@ const PoliceDashboard: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Alerts List */}
+        {/* Alerts List with Tabs */}
         <Card>
           <CardHeader>
             <CardTitle>Panic Alerts</CardTitle>
@@ -226,9 +255,16 @@ const PoliceDashboard: React.FC = () => {
                         onClick={() => setSelectedAlert(alert)}
                       >
                         <div>
-                          <p><strong>ID:</strong> {alert.id}</p>
-                          <p><strong>Status:</strong> {alert.status}</p>
-                          <p><strong>Time:</strong> {new Date(alert.created_at).toLocaleString()}</p>
+                          <p>
+                            <strong>ID:</strong> {alert.id}
+                          </p>
+                          <p>
+                            <strong>Status:</strong> {alert.status}
+                          </p>
+                          <p>
+                            <strong>Time:</strong>{" "}
+                            {new Date(alert.created_at).toLocaleString()}
+                          </p>
                         </div>
                         {alert.status !== "resolved" && (
                           <Button
@@ -250,7 +286,7 @@ const PoliceDashboard: React.FC = () => {
         </Card>
       </div>
 
-      {/* Drawer for Alert Details */}
+      {/* Alert Drawer */}
       {selectedAlert && (
         <Drawer open={!!selectedAlert} onOpenChange={() => setSelectedAlert(null)}>
           <DrawerContent>
@@ -277,4 +313,3 @@ const PoliceDashboard: React.FC = () => {
 };
 
 export default PoliceDashboard;
-
