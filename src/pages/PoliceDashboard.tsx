@@ -22,6 +22,8 @@ interface PanicAlert {
   created_at: string;
 }
 
+const GOOGLE_MAPS_API_KEY = "AIzaSyBU7z2W7aE4T6TSV7SqEk0UJiyjAC97UW8";
+
 const PoliceDashboard: React.FC = () => {
   const [panicAlerts, setPanicAlerts] = useState<PanicAlert[]>([]);
   const [filter, setFilter] = useState<"all" | "active" | "resolved">("all");
@@ -72,13 +74,19 @@ const PoliceDashboard: React.FC = () => {
       if (!document.getElementById(scriptId)) {
         const script = document.createElement("script");
         script.id = scriptId;
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${
-          import.meta.env.VITE_GOOGLE_MAPS_API_KEY
-        }&libraries=places`;
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places`;
         script.async = true;
         script.defer = true;
 
         script.onload = initMap;
+        script.onerror = () => {
+          toast({
+            title: "Google Maps Error",
+            description: "Failed to load map. Check API key restrictions.",
+            variant: "destructive",
+          });
+        };
+
         document.body.appendChild(script);
       }
     } else {
