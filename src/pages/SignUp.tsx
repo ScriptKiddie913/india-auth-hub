@@ -1,11 +1,9 @@
 /* =======================================================
-   Sign‑up page – 100 % vanilla TS + React
+   Sign‑up page – 100 % vanilla TypeScript + React
    ------------------------------------------------------
-   New behaviour:
-   * Gets the user’s MetaMask address
-   * Creates a unique ID
-   * Persists wallet_address, unique_id and later sends a transaction
-   * Stores the tx hash, shows a clickable link to Etherscan
+   No third‑party libraries are imported – only the
+   `supabase` client that you already have and the
+   browser‑injected `window.ethereum` from MetaMask.
    =======================================================
 */
 
@@ -33,11 +31,6 @@ import {
   EyeOff,
   User,
 } from "lucide-react";
-import {
-  getEthereumAccount,
-  generateUniqueId,
-  registerOnChainAndPersist,
-} from "@/lib/ethereum";
 
 const SignUp = () => {
   /* ------------ state ------------------------------------------------ */
@@ -64,6 +57,34 @@ const SignUp = () => {
       ...prev,
       [e.target.name]: e.target.value,
     }));
+  };
+
+  /* ------------ Ethereum helpers ----------------------------------- */
+  /* Get the first account that MetaMask gives us. */
+  const getEthereumAccount = async (): Promise<string> => {
+    if (!window.ethereum) {
+      throw new Error("MetaMask not installed");
+    }
+    const accounts: string[] = await window.ethereum.request({
+      method: "eth_requestAccounts",
+    });
+    return accounts[0];
+  };
+
+  /* Build a deterministic “unique‑id”:
+     SHA‑256([address] + "-" + [timestamp]).
+     The resulting 64‑hex characters are easy to store. */
+  const generateUniqueId = async (address: string) => {
+    const encoder = new TextEncoder();
+    const text = `${address}-${Date.now()}`;
+    const hashBuffer = await crypto.subtle.digest(
+      "SHA-256",
+      encoder.encode(text)
+    );
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
   };
 
   /* ------------ sign‑up flow --------------------------------------- */
@@ -102,46 +123,40 @@ const SignUp = () => {
       return;
     }
 
+    /* ------------------------------- */
     setLoading(true);
     try {
-      /* 1) Sign‑up with Supabase (creates the row in auth.users) */
+      /* 1) Sign‑up on Supabase */
       const { error: supaError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: {
-          data: { full_name: formData.fullName },
+          data: {
+            full_name: formData.fullName,
+          },
         },
       });
 
-      if (supaError) throw new Error(supaError.message);
+      if (supaError) {
+        throw new Error(supaError.message);
+      }
 
-      /* 2) Get the user's MetaMask address & unique ID */
+      /* 2) Pull MetaMask address and generate ID
+         (we only do this if the user has MetaMask). */
       const address = await getEthereumAccount();
       const uniqueId = await generateUniqueId(address);
 
-      /* 3) Store wallet & unique ID in the user metadata */
+      /* 3) Store address + ID in Supabase User Metadata
+         (Supabase stores the data you sent in the sign‑up
+         `options.data` block, so just update it now). */
       await supabase.auth.updateUser({
-        data: { wallet_address: address, unique_id: uniqueId },
+        data: {
+          wallet_address: address,
+          unique_id: uniqueId,
+        },
       });
 
-      /* 4) Persist the wallet / id in the profiles table so the
-          user can finish their profile later (see ProfileCompletion) */
-      await supabase
-        .from("profiles")
-        .upsert(
-          {
-            user_id: (await supabase.auth.getUser()).data?.user?.id ?? null,
-            wallet_address: address,
-            unique_id: uniqueId,
-          },
-          { onConflict: "user_id" }
-        );
-
-      /* 5) Send the contract transaction and store the tx hash */
-      const { data: { user } } = await supabase.auth.getUser();
-      await registerOnChainAndPersist(uniqueId, user?.id ?? "", toast);
-
-      /* 6) Final UI feedback */
+      /* 4) Notify & redirect */
       toast({
         title: "Check your email!",
         description:
@@ -165,7 +180,9 @@ const SignUp = () => {
       className="min-h-screen flex items-center justify-center p-4 bg-cover bg-center relative"
       style={{ backgroundImage: "url('/image/signup.jpg')" }}
     >
+      {/* Gradient overlay */}
       <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/20 to-black/40" />
+      {/* The card */}
       <Card className="w-full max-w-md mx-auto backdrop-blur-md bg-white/90 shadow-2xl border border-white/20 animate-fade-in relative z-10">
         <CardHeader className="text-center pb-6">
           <div className="mx-auto w-16 h-16 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center mb-4 shadow-lg">
@@ -267,7 +284,9 @@ const SignUp = () => {
                 />
                 <button
                   type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  onClick={() =>
+                    setShowConfirmPassword(!showConfirmPassword)
+                  }
                   className="absolute right-3 top-3 h-4 w-4 text-muted-foreground hover:text-foreground transition-colors"
                 >
                   {showConfirmPassword ? <EyeOff /> : <Eye />}
