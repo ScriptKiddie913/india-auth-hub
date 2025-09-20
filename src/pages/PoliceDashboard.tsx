@@ -345,6 +345,8 @@ const PoliceDashboard: React.FC = () => {
   /* ------------------------------------------------------------------ 6️⃣ Police‑alert CRUD --------------------------------------------------------------- */
   /** Create a new police alert */
   const handleCreatePoliceAlert = async () => {
+    /* Note: the payload deliberately omits user_id – the trigger
+       automatically sets it to the signed‑in user */
     const { error } = await supabase
       .from("police_alerts")
       .insert([
@@ -698,3 +700,4 @@ const PoliceDashboard: React.FC = () => {
 };
 
 export default PoliceDashboard;
+
