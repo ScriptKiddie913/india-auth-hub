@@ -233,7 +233,9 @@ const PoliceDashboard: React.FC = () => {
             setUserLocations((prev) => {
               const exists = prev.find((l) => l.id === change.id);
               if (exists) {
-                return prev.map((l) => (l.id === change.id ? change : l));
+                return prev.map((l) =>
+                  l.id === change.id ? change : l
+                );
               }
               return [change, ...prev];
             });
@@ -260,10 +262,37 @@ const PoliceDashboard: React.FC = () => {
   }, [userMap]);
 
   /* ------------------------------------------------------------------ 5️⃣ Map initialization & marker handling -------------------------------------------------- */
+  const loadGoogleMaps = (): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if ((window as any).google && (window as any).google.maps) return resolve();
+
+      const scriptId = "google-maps-script";
+      if (!document.getElementById(scriptId)) {
+        const script = document.createElement("script");
+        script.id = scriptId;
+        script.src =
+          "https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=places";
+        script.async = true;
+        script.defer = true;
+        script.onload = () => resolve();
+        script.onerror = () =>
+          reject(new Error("Google Maps failed to load"));
+        document.body.appendChild(script);
+      } else {
+        resolve();
+      }
+    });
+  };
+
   useEffect(() => {
     loadGoogleMaps()
       .then(() => {
         if (!mapRef.current || mapInstance.current) return;
+        // ----- Safety guard ----- //
+        if (!(window as any).google || !(window as any).google.maps) {
+          console.warn("Google Maps library not available");
+          return;
+        }
         mapInstance.current = new (window as any).google.maps.Map(
           mapRef.current,
           {
@@ -336,7 +365,9 @@ const PoliceDashboard: React.FC = () => {
         </div>`,
       });
 
-      marker.addListener("click", () => info.open(mapInstance.current, marker));
+      marker.addListener("click", () =>
+        info.open(mapInstance.current, marker)
+      );
 
       markersRef.current.push(marker);
     });
@@ -345,8 +376,7 @@ const PoliceDashboard: React.FC = () => {
   /* ------------------------------------------------------------------ 6️⃣ Police‑alert CRUD --------------------------------------------------------------- */
   /** Create a new police alert */
   const handleCreatePoliceAlert = async () => {
-    /* Note: the payload deliberately omits user_id – the trigger
-       automatically sets it to the signed‑in user */
+    /* <-- note: no user_id field is sent – the trigger fills it automatically <-- */
     const { error } = await supabase
       .from("police_alerts")
       .insert([
@@ -700,4 +730,3 @@ const PoliceDashboard: React.FC = () => {
 };
 
 export default PoliceDashboard;
-
