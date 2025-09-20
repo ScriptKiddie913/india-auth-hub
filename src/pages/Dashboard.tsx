@@ -70,7 +70,9 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [policeAlerts, setPoliceAlerts] = useState<PoliceAlert[]>([]);
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(
+    null
+  );
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [isSafe, setIsSafe] = useState(true);
@@ -726,10 +728,6 @@ const Dashboard = () => {
                           <p>
                             <strong>Location:</strong> {al.latitude},{" "}
                             {al.longitude}
-                          </p>
-                          <p>
-                            <strong>Message:</strong>{" "}
-                            {al.message ?? "No message provided"}
                           </p>
                           <p>
                             <strong>Time:</strong>{" "}
