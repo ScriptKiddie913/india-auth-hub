@@ -31,7 +31,7 @@ interface Destination {
   longitude?: number;
 }
 
-interface PanicAlert {
+interface PoliceAlert {
   id: string;
   user_id: string;
   latitude: number;
@@ -44,7 +44,9 @@ interface PanicAlert {
 const GEOFENCE_RADIUS = 700; // meters
 const MOBILE_SHIELD_RADIUS = 200; // meters
 
-// Haversine distance helper
+/**
+ * Haversine distance helper
+ */
 const getDistance = (
   lat1: number,
   lon1: number,
@@ -67,8 +69,10 @@ const Dashboard = () => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [destinations, setDestinations] = useState<Destination[]>([]);
-  const [panicAlerts, setPanicAlerts] = useState<PanicAlert[]>([]);
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [policeAlerts, setPoliceAlerts] = useState<PoliceAlert[]>([]);
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(
+    null
+  );
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [isSafe, setIsSafe] = useState(true);
@@ -121,7 +125,7 @@ const Dashboard = () => {
           return;
         }
         await fetchDestinations(user.id);
-        await fetchPanicAlerts();                                  // <‑‑ fetch alerts
+        await fetchPoliceAlerts();                                 // <‑‑ fetch police alerts
       } else {
         navigate("/signin");
       }
@@ -332,8 +336,6 @@ const Dashboard = () => {
         description: "Emergency services have been notified of your location.",
         variant: "destructive",
       });
-
-      await fetchPanicAlerts();                                     // <‑‑ refresh list
     } catch (err: any) {
       toast({
         title: "Error sending panic alert",
@@ -363,19 +365,19 @@ const Dashboard = () => {
     }
   };
 
-  /* -------------------------------- 7️⃣ Fetch panic alerts -------------------------------- */
-  const fetchPanicAlerts = async () => {
+  /* -------------------------------- 7️⃣ Fetch police alerts -------------------------------- */
+  const fetchPoliceAlerts = async () => {
     try {
       const { data, error } = await supabase
-        .from("panic_alerts")
+        .from("police_alerts")
         .select("*")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setPanicAlerts(data || []);
+      setPoliceAlerts(data || []);
     } catch (err: any) {
       toast({
-        title: "Error fetching panic alerts",
+        title: "Error fetching police alerts",
         description: err.message,
         variant: "destructive",
       });
@@ -708,11 +710,11 @@ const Dashboard = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {panicAlerts.length === 0 ? (
+                  {policeAlerts.length === 0 ? (
                     <p>No alerts to show.</p>
                   ) : (
                     <ul className="space-y-3">
-                      {panicAlerts.map((al) => (
+                      {policeAlerts.map((al) => (
                         <li
                           key={al.id}
                           className="p-3 border rounded-lg shadow bg-red-50"
@@ -724,8 +726,8 @@ const Dashboard = () => {
                             <strong>Status:</strong> {al.status}
                           </p>
                           <p>
-                            <strong>Location:</strong>{" "}
-                            {al.latitude}, {al.longitude}
+                            <strong>Location:</strong> {al.latitude},{" "}
+                            {al.longitude}
                           </p>
                           <p>
                             <strong>Time:</strong>{" "}
