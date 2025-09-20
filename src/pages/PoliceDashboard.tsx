@@ -44,9 +44,17 @@ interface PoliceAlert {
   created_at: string;
 }
 
+interface UserLocation {
+  id: string;
+  user_id: string;
+  latitude: number;
+  longitude: number;
+  created_at: string;
+}
+
 /* ------------------------------------------------------------------ 2️⃣ Supabase DDL for police_alerts (create once in console) ------------------------------------------------------------------ */
 /*
-DROP TABLE IF EXISTS police_alerts;          -- safe drop – does nothing if the table is already gone
+DROP TABLE IF EXISTS police_alerts;
 
 CREATE TABLE police_alerts (
   id           bigint      PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
@@ -54,7 +62,7 @@ CREATE TABLE police_alerts (
   message      text        NOT NULL,
   latitude     numeric(9,6) NOT NULL,
   longitude    numeric(9,6) NOT NULL,
-  status       text        NOT NULL DEFAULT 'active',            -- 'active' | 'resolved'
+  status       text        NOT NULL DEFAULT 'active',
   created_at   timestamptz DEFAULT now()
 );
 
@@ -65,7 +73,7 @@ CREATE POLICY police_alerts_user  ON police_alerts USING (user_id = auth.uid());
 CREATE OR REPLACE FUNCTION set_current_user_police_alerts()
 RETURNS trigger AS $$
 BEGIN
-  NEW.user_id := auth.uid();           -- store signed‑in user’s UUID
+  NEW.user_id := auth.uid();
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -80,6 +88,7 @@ const PoliceDashboard: React.FC = () => {
   /* ---- State ---- */
   const [panicAlerts, setPanicAlerts] = useState<PanicAlert[]>([]);
   const [policeAlerts, setPoliceAlerts] = useState<PoliceAlert[]>([]);
+  const [userLocations, setUserLocations] = useState<UserLocation[]>([]);
   const [filter, setFilter] = useState<"all" | "active" | "resolved">("all");
   const [selectedAlert, setSelectedAlert] = useState<PanicAlert | null>(null);
 
@@ -97,7 +106,7 @@ const PoliceDashboard: React.FC = () => {
 
   /* ------------------------------------------------------------------ 3️⃣ Real‑time subscriptions -------------------------------------------------- */
   useEffect(() => {
-    /** Police alerts channel */
+    /* Police alerts */
     const subPolice = supabase
       .channel("police_alerts-channel")
       .on(
@@ -119,7 +128,7 @@ const PoliceDashboard: React.FC = () => {
       )
       .subscribe();
 
-    /** Panic alerts channel */
+    /* Panic alerts */
     const subPanic = supabase
       .channel("panic_alerts-channel")
       .on(
@@ -141,9 +150,42 @@ const PoliceDashboard: React.FC = () => {
       )
       .subscribe();
 
+    /* User locations */
+    const subUserLoc = supabase
+      .channel("user_locations-channel")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "user_locations" },
+        (payload) => {
+          const change = payload.new as UserLocation | null;
+          const old = payload.old as UserLocation | null;
+          if (payload.eventType === "INSERT" && change) {
+            setUserLocations((prev) => [...prev, change]);
+          } else if (payload.eventType === "UPDATE" && change) {
+            setUserLocations((prev) =>
+              prev.map((l) => (l.id === change.id ? change : l))
+            );
+          } else if (payload.eventType === "DELETE" && old) {
+            setUserLocations((prev) => prev.filter((l) => l.id !== old.id));
+          }
+        }
+      )
+      .subscribe();
+
+    /* Initial fetch of user locations */
+    const fetchUsers = async () => {
+      const { data, error } = await supabase
+        .from("user_locations")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (!error && data) setUserLocations(data);
+    };
+    fetchUsers();
+
     return () => {
       supabase.removeChannel(subPolice);
       supabase.removeChannel(subPanic);
+      supabase.removeChannel(subUserLoc);
     };
   }, []);
 
@@ -164,7 +206,6 @@ const PoliceDashboard: React.FC = () => {
         script.onerror = () => reject(new Error("Google Maps failed to load"));
         document.body.appendChild(script);
       } else {
-        scriptId; // placeholder – nothing to do
         resolve();
       }
     });
@@ -178,21 +219,22 @@ const PoliceDashboard: React.FC = () => {
           center: { lat: 22.5726, lng: 88.3639 },
           zoom: 12,
         });
-        updateMarkers(panicAlerts, policeAlerts);
+        updateMarkers(panicAlerts, policeAlerts, userLocations);
       })
       .catch(console.error);
   }, []);
 
-  // Update markers whenever data changes
+  // Sync markers whenever any dataset changes
   useEffect(() => {
     if (!mapInstance.current) return;
-    updateMarkers(panicAlerts, policeAlerts);
-  }, [panicAlerts, policeAlerts]);
+    updateMarkers(panicAlerts, policeAlerts, userLocations);
+  }, [panicAlerts, policeAlerts, userLocations]);
 
-  /** Renders all markers (red for panic, yellow for police). */
+  /** Renders all markers (red: panic, yellow: police, green: user locations). */
   const updateMarkers = (
     alerts: PanicAlert[],
-    police: PoliceAlert[]
+    police: PoliceAlert[],
+    users: UserLocation[]
   ) => {
     if (!mapInstance.current) return;
 
@@ -200,7 +242,7 @@ const PoliceDashboard: React.FC = () => {
     markersRef.current.forEach((m) => m.setMap(null));
     markersRef.current = [];
 
-    // Panic alerts – red
+    /* Panic alerts – red */
     alerts.forEach((alert) => {
       const marker = new (window as any).google.maps.Marker({
         position: { lat: alert.latitude, lng: alert.longitude },
@@ -226,7 +268,7 @@ const PoliceDashboard: React.FC = () => {
       markersRef.current.push(marker);
     });
 
-    // Police alerts – yellow
+    /* Police alerts – yellow */
     police.forEach((pol) => {
       const marker = new (window as any).google.maps.Marker({
         position: { lat: pol.latitude, lng: pol.longitude },
@@ -241,6 +283,28 @@ const PoliceDashboard: React.FC = () => {
           Message: ${pol.message}<br/>
           Status: ${pol.status}<br/>
           Time: ${new Date(pol.created_at).toLocaleString()}
+        </div>`,
+      });
+
+      marker.addListener("click", () => info.open(mapInstance.current, marker));
+
+      markersRef.current.push(marker);
+    });
+
+    /* User locations – green */
+    users.forEach((user) => {
+      const marker = new (window as any).google.maps.Marker({
+        position: { lat: user.latitude, lng: user.longitude },
+        map: mapInstance.current,
+        icon: "http://maps.google.com/mapfiles/ms/icons/green-dot.png",
+        title: `User: ${user.user_id}`,
+      });
+
+      const info = new (window as any).google.maps.InfoWindow({
+        content: `<div>
+          <strong>User Location</strong><br/>
+          User ID: ${user.user_id}<br/>
+          Time: ${new Date(user.created_at).toLocaleString()}
         </div>`,
       });
 
@@ -366,7 +430,7 @@ const PoliceDashboard: React.FC = () => {
           <CardContent className="p-4 text-center">
             <Button
               onClick={() => {
-                /* Real‑time updates keep the UI in sync – this button forces a manual refresh */
+                /* Real‑time keeps data up to date; refresh triggers manual sync */
               }}
             >
               Refresh
@@ -523,6 +587,43 @@ const PoliceDashboard: React.FC = () => {
         </CardContent>
       </Card>
 
+      {/* Live User Locations */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Live User Locations</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {userLocations.length === 0 ? (
+            <p>No user locations available</p>
+          ) : (
+            <ul className="space-y-3">
+              {userLocations.map((loc) => (
+                <li
+                  key={loc.id}
+                  className="p-3 border rounded-lg shadow flex justify-between items-center"
+                >
+                  <div>
+                    <p>
+                      <strong>User ID:</strong> {loc.user_id}
+                    </p>
+                    <p>
+                      <strong>Latitude:</strong> {loc.latitude}
+                    </p>
+                    <p>
+                      <strong>Longitude:</strong> {loc.longitude}
+                    </p>
+                    <p>
+                      <strong>Last Updated:</strong>{" "}
+                      {new Date(loc.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Alert Drawer */}
       {selectedAlert && (
         <Drawer
@@ -565,4 +666,3 @@ const PoliceDashboard: React.FC = () => {
 };
 
 export default PoliceDashboard;
-
