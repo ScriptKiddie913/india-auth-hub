@@ -36,11 +36,19 @@ interface PanicAlert {
 
 interface PoliceAlert {
   id: string;
-  user_id: string;          // stored by trigger
+  user_id: string;          // set by trigger
   message: string;
   latitude: number;
   longitude: number;
   status: string;
+  created_at: string;
+}
+
+interface UserLocation {
+  id: string;
+  user_id: string;
+  latitude: number;
+  longitude: number;
   created_at: string;
 }
 
@@ -80,6 +88,7 @@ const PoliceDashboard: React.FC = () => {
   /* ---- State ---- */
   const [panicAlerts, setPanicAlerts] = useState<PanicAlert[]>([]);
   const [policeAlerts, setPoliceAlerts] = useState<PoliceAlert[]>([]);
+  const [userLocations, setUserLocations] = useState<UserLocation[]>([]);
   const [filter, setFilter] = useState<"all" | "active" | "resolved">("all");
   const [selectedAlert, setSelectedAlert] = useState<PanicAlert | null>(null);
 
@@ -98,9 +107,58 @@ const PoliceDashboard: React.FC = () => {
   const mapInstance = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
 
-  /* ------------------------------------------------------------------ 3️⃣ Real‑time subscriptions -------------------------------------------------- */
+  /* ------------------------------------------------------------------ 3️⃣ Initial fetch of data (panic alerts + police alerts) ------------------------------------------- */
   useEffect(() => {
-    /** Helper that fetches a single user profile when needed */
+    const fetchInitialData = async () => {
+      /* --- Panic alerts --- */
+      const { data: panicData, error: panicErr } = await supabase
+        .from("panic_alerts")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (!panicErr && panicData) {
+        setPanicAlerts(panicData as PanicAlert[]);
+      }
+
+      /* --- Police alerts --- */
+      const { data: policeData, error: policeErr } = await supabase
+        .from("police_alerts")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (!policeErr && policeData) {
+        setPoliceAlerts(policeData as PoliceAlert[]);
+      }
+
+      /* --- Profiles for all user IDs --- */
+      const allIds = [
+        ...(panicData ?? []).map((a: any) => a.user_id),
+        ...(policeData ?? []).map((p: any) => p.user_id),
+      ];
+      const uniqueIds = Array.from(new Set(allIds));
+
+      if (uniqueIds.length) {
+        const { data: profiles, error: profErr } = await supabase
+          .from("profiles")
+          .select("user_id, full_name")
+          .in("user_id", uniqueIds);
+
+        if (!profErr && profiles) {
+          const map: Record<string, string> = {};
+          profiles.forEach((p: any) => {
+            map[p.user_id] = p.full_name || p.user_id;
+          });
+          setUserMap(map);
+        }
+      }
+    };
+
+    fetchInitialData();
+  }, []);
+
+  /* ------------------------------------------------------------------ 4️⃣ Real‑time subscriptions --------------------------------------------------- */
+  useEffect(() => {
+    /** Helper that fetches a user profile when a new ID appears */
     const addUserToMap = async (userId: string) => {
       if (userMap[userId]) return;
       const { data, error } = await supabase
@@ -109,11 +167,14 @@ const PoliceDashboard: React.FC = () => {
         .eq("user_id", userId)
         .single();
       if (!error && data) {
-        setUserMap(prev => ({ ...prev, [userId]: data.full_name || data.user_id }));
+        setUserMap((prev) => ({
+          ...prev,
+          [userId]: data.full_name || data.user_id,
+        }));
       }
     };
 
-    /** Police alerts channel */
+    /* Police alerts channel */
     const subPolice = supabase
       .channel("police_alerts-channel")
       .on(
@@ -123,19 +184,19 @@ const PoliceDashboard: React.FC = () => {
           const change = payload.new as PoliceAlert | null;
           const old = payload.old as PoliceAlert | null;
           if (payload.eventType === "INSERT" && change) {
-            setPoliceAlerts(prev => [change, ...prev]);
+            setPoliceAlerts((prev) => [change, ...prev]);
           } else if (payload.eventType === "UPDATE" && change) {
-            setPoliceAlerts(prev =>
-              prev.map(a => (a.id === change.id ? change : a))
+            setPoliceAlerts((prev) =>
+              prev.map((a) => (a.id === change.id ? change : a))
             );
           } else if (payload.eventType === "DELETE" && old) {
-            setPoliceAlerts(prev => prev.filter(a => a.id !== old.id));
+            setPoliceAlerts((prev) => prev.filter((a) => a.id !== old.id));
           }
         }
       )
       .subscribe();
 
-    /** Panic alerts channel */
+    /* Panic alerts channel */
     const subPanic = supabase
       .channel("panic_alerts-channel")
       .on(
@@ -145,15 +206,47 @@ const PoliceDashboard: React.FC = () => {
           const change = payload.new as PanicAlert | null;
           const old = payload.old as PanicAlert | null;
           if (payload.eventType === "INSERT" && change) {
-            setPanicAlerts(prev => [change, ...prev]);
+            setPanicAlerts((prev) => [change, ...prev]);
             addUserToMap(change.user_id);
           } else if (payload.eventType === "UPDATE" && change) {
-            setPanicAlerts(prev =>
-              prev.map(a => (a.id === change.id ? change : a))
+            setPanicAlerts((prev) =>
+              prev.map((a) => (a.id === change.id ? change : a))
             );
             addUserToMap(change.user_id);
           } else if (payload.eventType === "DELETE" && old) {
-            setPanicAlerts(prev => prev.filter(a => a.id !== old.id));
+            setPanicAlerts((prev) => prev.filter((a) => a.id !== old.id));
+          }
+        }
+      )
+      .subscribe();
+
+    /* User locations channel */
+    const subLocation = supabase
+      .channel("user_locations-channel")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "user_locations" },
+        (payload) => {
+          const change = payload.new as UserLocation | null;
+          const old = payload.old as UserLocation | null;
+          if (payload.eventType === "INSERT" && change) {
+            setUserLocations((prev) => {
+              const exists = prev.find((l) => l.id === change.id);
+              if (exists) {
+                return prev.map((l) => (l.id === change.id ? change : l));
+              }
+              return [change, ...prev];
+            });
+            addUserToMap(change.user_id);
+          } else if (payload.eventType === "UPDATE" && change) {
+            setUserLocations((prev) =>
+              prev.map((l) => (l.id === change.id ? change : l))
+            );
+            addUserToMap(change.user_id);
+          } else if (payload.eventType === "DELETE" && old) {
+            setUserLocations((prev) =>
+              prev.filter((l) => l.id !== old.id)
+            );
           }
         }
       )
@@ -162,39 +255,22 @@ const PoliceDashboard: React.FC = () => {
     return () => {
       supabase.removeChannel(subPolice);
       supabase.removeChannel(subPanic);
+      supabase.removeChannel(subLocation);
     };
   }, [userMap]);
 
-  /* ------------------------------------------------------------------ 4️⃣ Map initialization & marker handling -------------------------------------------------- */
-  const loadGoogleMaps = (): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      if ((window as any).google && (window as any).google.maps) return resolve();
-
-      const scriptId = "google-maps-script";
-      if (!document.getElementById(scriptId)) {
-        const script = document.createElement("script");
-        script.id = scriptId;
-        script.src =
-          "https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=places";
-        script.async = true;
-        script.defer = true;
-        script.onload = () => resolve();
-        script.onerror = () => reject(new Error("Google Maps failed to load"));
-        document.body.appendChild(script);
-      } else {
-        resolve();
-      }
-    });
-  };
-
+  /* ------------------------------------------------------------------ 5️⃣ Map initialization & marker handling -------------------------------------------------- */
   useEffect(() => {
     loadGoogleMaps()
       .then(() => {
         if (!mapRef.current || mapInstance.current) return;
-        mapInstance.current = new (window as any).google.maps.Map(mapRef.current, {
-          center: { lat: 22.5726, lng: 88.3639 },
-          zoom: 12,
-        });
+        mapInstance.current = new (window as any).google.maps.Map(
+          mapRef.current,
+          {
+            center: { lat: 22.5726, lng: 88.3639 },
+            zoom: 12,
+          }
+        );
         updateMarkers(panicAlerts, policeAlerts);
       })
       .catch(console.error);
@@ -213,7 +289,6 @@ const PoliceDashboard: React.FC = () => {
   ) => {
     if (!mapInstance.current) return;
 
-    // Remove old markers
     markersRef.current.forEach((m) => m.setMap(null));
     markersRef.current = [];
 
@@ -267,7 +342,7 @@ const PoliceDashboard: React.FC = () => {
     });
   };
 
-  /* ------------------------------------------------------------------ 5️⃣ Police‑alert CRUD --------------------------------------------------------------- */
+  /* ------------------------------------------------------------------ 6️⃣ Police‑alert CRUD --------------------------------------------------------------- */
   /** Create a new police alert */
   const handleCreatePoliceAlert = async () => {
     const { error } = await supabase
@@ -313,7 +388,7 @@ const PoliceDashboard: React.FC = () => {
     }
   };
 
-  /* ------------------------------------------------------------------ 6️⃣ Existing actions ------------------------------------------------------------- */
+  /* ------------------------------------------------------------------ 7️⃣ Existing actions ------------------------------------------------------------- */
   /** Resolve a panic alert */
   const handleResolve = async (id: string) => {
     const { error } = await supabase
@@ -337,7 +412,7 @@ const PoliceDashboard: React.FC = () => {
     navigate("/police-signin");
   };
 
-  /* ------------------------------------------------------------------ 7️⃣ UI metrics ---------------------------------------------- */
+  /* ------------------------------------------------------------------ 8️⃣ UI metrics ---------------------------------------------- */
   const filteredAlerts =
     filter === "all"
       ? panicAlerts
@@ -348,7 +423,7 @@ const PoliceDashboard: React.FC = () => {
   const activeCount = panicAlerts.filter((a) => a.status !== "resolved").length;
   const resolvedCount = panicAlerts.filter((a) => a.status === "resolved").length;
 
-  /* ------------------------------------------------------------------ 8️⃣ Render -------------------------------------------------------- */
+  /* ------------------------------------------------------------------ 9️⃣ Render -------------------------------------------------------- */
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -383,7 +458,7 @@ const PoliceDashboard: React.FC = () => {
           <CardContent className="p-4 text-center">
             <Button
               onClick={() => {
-                /* Real‑time keeps the UI in sync – this button only forces a manual refresh */
+                /* Real‑time keeps the UI in sync – this button forces a manual refresh */
               }}
             >
               Refresh
@@ -535,6 +610,44 @@ const PoliceDashboard: React.FC = () => {
                       Resolve
                     </Button>
                   )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Live User Locations List */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Live User Locations</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {userLocations.length === 0 ? (
+            <p>No live locations</p>
+          ) : (
+            <ul className="space-y-3">
+              {userLocations.map((loc) => (
+                <li
+                  key={loc.id}
+                  className="p-3 border rounded-lg shadow flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-2 sm:space-y-0"
+                >
+                  <div>
+                    <p>
+                      <strong>Name:</strong>{" "}
+                      {userMap[loc.user_id] ?? loc.user_id}
+                    </p>
+                    <p>
+                      <strong>Latitude:</strong> {loc.latitude}
+                    </p>
+                    <p>
+                      <strong>Longitude:</strong> {loc.longitude}
+                    </p>
+                    <p>
+                      <strong>Updated:</strong>{" "}
+                      {new Date(loc.created_at).toLocaleString()}
+                    </p>
+                  </div>
                 </li>
               ))}
             </ul>
