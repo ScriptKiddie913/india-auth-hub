@@ -44,6 +44,14 @@ interface PoliceAlert {
   created_at: string;
 }
 
+interface UserLocation {
+  id: string;
+  user_id: string;
+  latitude: number;
+  longitude: number;
+  created_at: string;
+}
+
 /* ------------------------------------------------------------------ 2️⃣ Supabase DDL for police_alerts (create once in console) ------------------------------------------------------------------ */
 /*
 DROP TABLE IF EXISTS police_alerts;
@@ -80,6 +88,7 @@ const PoliceDashboard: React.FC = () => {
   /* ---- State ---- */
   const [panicAlerts, setPanicAlerts] = useState<PanicAlert[]>([]);
   const [policeAlerts, setPoliceAlerts] = useState<PoliceAlert[]>([]);
+  const [userLocations, setUserLocations] = useState<UserLocation[]>([]);
   const [filter, setFilter] = useState<"all" | "active" | "resolved">("all");
   const [selectedAlert, setSelectedAlert] = useState<PanicAlert | null>(null);
 
@@ -88,82 +97,10 @@ const PoliceDashboard: React.FC = () => {
   const [policeLat, setPoliceLat] = useState("");
   const [policeLng, setPoliceLng] = useState("");
 
-  /* --- User name lookup ---- */
-  const [userMap, setUserMap] = useState<Record<string, string>>({});
-
-  /* ---- Hooks ---- */
-  const { toast } = useToast();
-  const navigate = useNavigate();
+  /* --- Map reference ---- */
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
-
-  /* ------------------------------------------------------------------ 3️⃣ Real‑time subscriptions -------------------------------------------------- */
-  useEffect(() => {
-    /** Helper that fetches a single user profile when needed */
-    const addUserToMap = async (userId: string) => {
-      if (userMap[userId]) return;
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("user_id, full_name")
-        .eq("user_id", userId)
-        .single();
-      if (!error && data) {
-        setUserMap(prev => ({ ...prev, [userId]: data.full_name || data.user_id }));
-      }
-    };
-
-    /** Police alerts channel */
-    const subPolice = supabase
-      .channel("police_alerts-channel")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "police_alerts" },
-        (payload) => {
-          const change = payload.new as PoliceAlert | null;
-          const old = payload.old as PoliceAlert | null;
-          if (payload.eventType === "INSERT" && change) {
-            setPoliceAlerts(prev => [change, ...prev]);
-          } else if (payload.eventType === "UPDATE" && change) {
-            setPoliceAlerts(prev =>
-              prev.map(a => (a.id === change.id ? change : a))
-            );
-          } else if (payload.eventType === "DELETE" && old) {
-            setPoliceAlerts(prev => prev.filter(a => a.id !== old.id));
-          }
-        }
-      )
-      .subscribe();
-
-    /** Panic alerts channel */
-    const subPanic = supabase
-      .channel("panic_alerts-channel")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "panic_alerts" },
-        (payload) => {
-          const change = payload.new as PanicAlert | null;
-          const old = payload.old as PanicAlert | null;
-          if (payload.eventType === "INSERT" && change) {
-            setPanicAlerts(prev => [change, ...prev]);
-            addUserToMap(change.user_id);
-          } else if (payload.eventType === "UPDATE" && change) {
-            setPanicAlerts(prev =>
-              prev.map(a => (a.id === change.id ? change : a))
-            );
-            addUserToMap(change.user_id);
-          } else if (payload.eventType === "DELETE" && old) {
-            setPanicAlerts(prev => prev.filter(a => a.id !== old.id));
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(subPolice);
-      supabase.removeChannel(subPanic);
-    };
-  }, [userMap]);
 
   /* ------------------------------------------------------------------ 4️⃣ Map initialization & marker handling -------------------------------------------------- */
   const loadGoogleMaps = (): Promise<void> => {
@@ -179,7 +116,8 @@ const PoliceDashboard: React.FC = () => {
         script.async = true;
         script.defer = true;
         script.onload = () => resolve();
-        script.onerror = () => reject(new Error("Google Maps failed to load"));
+        script.onerror = () =>
+          reject(new Error("Google Maps failed to load"));
         document.body.appendChild(script);
       } else {
         resolve();
@@ -191,10 +129,13 @@ const PoliceDashboard: React.FC = () => {
     loadGoogleMaps()
       .then(() => {
         if (!mapRef.current || mapInstance.current) return;
-        mapInstance.current = new (window as any).google.maps.Map(mapRef.current, {
-          center: { lat: 22.5726, lng: 88.3639 },
-          zoom: 12,
-        });
+        mapInstance.current = new (window as any).google.maps.Map(
+          mapRef.current,
+          {
+            center: { lat: 22.5726, lng: 88.3639 },
+            zoom: 12,
+          }
+        );
         updateMarkers(panicAlerts, policeAlerts);
       })
       .catch(console.error);
@@ -222,7 +163,8 @@ const PoliceDashboard: React.FC = () => {
       const marker = new (window as any).google.maps.Marker({
         position: { lat: alert.latitude, lng: alert.longitude },
         map: mapInstance.current,
-        icon: "http://maps.google.com/mapfiles/ms/icons/red-dot.png",
+        icon:
+          "http://maps.google.com/mapfiles/ms/icons/red-dot.png",
         title: `Alert ID: ${alert.id}`,
       });
 
@@ -248,7 +190,8 @@ const PoliceDashboard: React.FC = () => {
       const marker = new (window as any).google.maps.Marker({
         position: { lat: pol.latitude, lng: pol.longitude },
         map: mapInstance.current,
-        icon: "http://maps.google.com/mapfiles/ms/icons/yellow-dot.png",
+        icon:
+          "http://maps.google.com/mapfiles/ms/icons/yellow-dot.png",
         title: `Police Alert: ${pol.message}`,
       });
 
@@ -261,13 +204,154 @@ const PoliceDashboard: React.FC = () => {
         </div>`,
       });
 
-      marker.addListener("click", () => info.open(mapInstance.current, marker));
+      marker.addListener("click", () =>
+        info.open(mapInstance.current, marker)
+      );
 
       markersRef.current.push(marker);
     });
   };
 
-  /* ------------------------------------------------------------------ 5️⃣ Police‑alert CRUD --------------------------------------------------------------- */
+  /* ------------------------------------------------------------------ 5️⃣ Real‑time subscriptions -------------------------------------------------- */
+  const { toast } = useToast();
+  const navigate = useNavigate();
+
+  /* Helper that fetches a single user profile when needed */
+  const addUserToMap = async (userId: string) => {
+    if (userMap[userId]) return;
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("user_id, full_name")
+      .eq("user_id", userId)
+      .single();
+    if (!error && data) {
+      setUserMap((prev) => ({
+        ...prev,
+        [userId]: data.full_name || data.user_id,
+      }));
+    }
+  };
+
+  useEffect(() => {
+    /* Police alerts channel */
+    const subPolice = supabase
+      .channel("police_alerts-channel")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "police_alerts" },
+        (payload) => {
+          const change = payload.new as PoliceAlert | null;
+          const old = payload.old as PoliceAlert | null;
+          if (payload.eventType === "INSERT" && change) {
+            setPoliceAlerts((prev) => [change, ...prev]);
+          } else if (payload.eventType === "UPDATE" && change) {
+            setPoliceAlerts((prev) =>
+              prev.map((a) => (a.id === change.id ? change : a))
+            );
+          } else if (payload.eventType === "DELETE" && old) {
+            setPoliceAlerts((prev) =>
+              prev.filter((a) => a.id !== old.id)
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    /* Panic alerts channel */
+    const subPanic = supabase
+      .channel("panic_alerts-channel")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "panic_alerts" },
+        (payload) => {
+          const change = payload.new as PanicAlert | null;
+          const old = payload.old as PanicAlert | null;
+          if (payload.eventType === "INSERT" && change) {
+            setPanicAlerts((prev) => [change, ...prev]);
+            addUserToMap(change.user_id);
+          } else if (payload.eventType === "UPDATE" && change) {
+            setPanicAlerts((prev) =>
+              prev.map((a) => (a.id === change.id ? change : a))
+            );
+            addUserToMap(change.user_id);
+          } else if (payload.eventType === "DELETE" && old) {
+            setPanicAlerts((prev) => prev.filter((a) => a.id !== old.id));
+          }
+        }
+      )
+      .subscribe();
+
+    /* User locations channel */
+    const subLocation = supabase
+      .channel("user_locations-channel")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "user_locations" },
+        (payload) => {
+          const change = payload.new as UserLocation | null;
+          const old = payload.old as UserLocation | null;
+          if (payload.eventType === "INSERT" && change) {
+            setUserLocations((prev) => {
+              const exists = prev.find((l) => l.id === change.id);
+              if (exists) {
+                return prev.map((l) =>
+                  l.id === change.id ? change : l
+                );
+              }
+              return [change, ...prev];
+            });
+            addUserToMap(change.user_id);
+          } else if (payload.eventType === "UPDATE" && change) {
+            setUserLocations((prev) =>
+              prev.map((l) => (l.id === change.id ? change : l))
+            );
+            addUserToMap(change.user_id);
+          } else if (payload.eventType === "DELETE" && old) {
+            setUserLocations((prev) =>
+              prev.filter((l) => l.id !== old.id)
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(subPolice);
+      supabase.removeChannel(subPanic);
+      supabase.removeChannel(subLocation);
+    };
+  }, [userMap]);
+
+  /* ------------------------------------------------------------------ 6️⃣ Initial fetch of user locations -------------------------------------------------- */
+  useEffect(() => {
+    const fetchInitialLocations = async () => {
+      const { data, error } = await supabase
+        .from("user_locations")
+        .select("*");
+      if (!error && data) {
+        setUserLocations(data as UserLocation[]);
+        const userIds = Array.from(
+          new Set((data as UserLocation[]).map((l) => l.user_id))
+        );
+        if (userIds.length) {
+          const { data: profiles, error: pErr } = await supabase
+            .from("profiles")
+            .select("user_id, full_name")
+            .in("user_id", userIds);
+          if (!pErr && profiles) {
+            const map: Record<string, string> = {};
+            profiles.forEach((p: any) => {
+              map[p.user_id] = p.full_name || p.user_id;
+            });
+            setUserMap((prev) => ({ ...prev, ...map }));
+          }
+        }
+      }
+    };
+    fetchInitialLocations();
+  }, []);
+
+  /* ------------------------------------------------------------------ 7️⃣ Police‑alert CRUD --------------------------------------------------------------- */
   /** Create a new police alert */
   const handleCreatePoliceAlert = async () => {
     const { error } = await supabase
@@ -313,7 +397,7 @@ const PoliceDashboard: React.FC = () => {
     }
   };
 
-  /* ------------------------------------------------------------------ 6️⃣ Existing actions ------------------------------------------------------------- */
+  /* ------------------------------------------------------------------ 8️⃣ Existing actions ------------------------------------------------------------- */
   /** Resolve a panic alert */
   const handleResolve = async (id: string) => {
     const { error } = await supabase
@@ -337,7 +421,7 @@ const PoliceDashboard: React.FC = () => {
     navigate("/police-signin");
   };
 
-  /* ------------------------------------------------------------------ 7️⃣ UI metrics ---------------------------------------------- */
+  /* ------------------------------------------------------------------ 9️⃣ UI metrics ---------------------------------------------- */
   const filteredAlerts =
     filter === "all"
       ? panicAlerts
@@ -348,7 +432,7 @@ const PoliceDashboard: React.FC = () => {
   const activeCount = panicAlerts.filter((a) => a.status !== "resolved").length;
   const resolvedCount = panicAlerts.filter((a) => a.status === "resolved").length;
 
-  /* ------------------------------------------------------------------ 8️⃣ Render -------------------------------------------------------- */
+  /* ------------------------------------------------------------------ 🔟 Render -------------------------------------------------------- */
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -542,6 +626,44 @@ const PoliceDashboard: React.FC = () => {
         </CardContent>
       </Card>
 
+      {/* Live User Locations List */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Live User Locations</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {userLocations.length === 0 ? (
+            <p>No live locations</p>
+          ) : (
+            <ul className="space-y-3">
+              {userLocations.map((loc) => (
+                <li
+                  key={loc.id}
+                  className="p-3 border rounded-lg shadow flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-2 sm:space-y-0"
+                >
+                  <div>
+                    <p>
+                      <strong>Name:</strong>{" "}
+                      {userMap[loc.user_id] ?? loc.user_id}
+                    </p>
+                    <p>
+                      <strong>Latitude:</strong> {loc.latitude}
+                    </p>
+                    <p>
+                      <strong>Longitude:</strong> {loc.longitude}
+                    </p>
+                    <p>
+                      <strong>Updated:</strong>{" "}
+                      {new Date(loc.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Alert Drawer */}
       {selectedAlert && (
         <Drawer
@@ -585,3 +707,4 @@ const PoliceDashboard: React.FC = () => {
 };
 
 export default PoliceDashboard;
+
