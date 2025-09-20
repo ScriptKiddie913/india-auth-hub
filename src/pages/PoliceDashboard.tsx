@@ -36,19 +36,11 @@ interface PanicAlert {
 
 interface PoliceAlert {
   id: string;
-  user_id: string;          // comes from the trigger
+  user_id: string;          // stored by trigger
   message: string;
   latitude: number;
   longitude: number;
   status: string;
-  created_at: string;
-}
-
-interface UserLocation {
-  id: string;
-  user_id: string;
-  latitude: number;
-  longitude: number;
   created_at: string;
 }
 
@@ -88,7 +80,6 @@ const PoliceDashboard: React.FC = () => {
   /* ---- State ---- */
   const [panicAlerts, setPanicAlerts] = useState<PanicAlert[]>([]);
   const [policeAlerts, setPoliceAlerts] = useState<PoliceAlert[]>([]);
-  const [userLocations, setUserLocations] = useState<UserLocation[]>([]);
   const [filter, setFilter] = useState<"all" | "active" | "resolved">("all");
   const [selectedAlert, setSelectedAlert] = useState<PanicAlert | null>(null);
 
@@ -96,6 +87,9 @@ const PoliceDashboard: React.FC = () => {
   const [policeMessage, setPoliceMessage] = useState("");
   const [policeLat, setPoliceLat] = useState("");
   const [policeLng, setPoliceLng] = useState("");
+
+  /* --- User name lookup ---- */
+  const [userMap, setUserMap] = useState<Record<string, string>>({});
 
   /* ---- Hooks ---- */
   const { toast } = useToast();
@@ -106,7 +100,20 @@ const PoliceDashboard: React.FC = () => {
 
   /* ------------------------------------------------------------------ 3️⃣ Real‑time subscriptions -------------------------------------------------- */
   useEffect(() => {
-    /* Police alerts */
+    /** Helper that fetches a single user profile when needed */
+    const addUserToMap = async (userId: string) => {
+      if (userMap[userId]) return;
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("user_id, full_name")
+        .eq("user_id", userId)
+        .single();
+      if (!error && data) {
+        setUserMap(prev => ({ ...prev, [userId]: data.full_name || data.user_id }));
+      }
+    };
+
+    /** Police alerts channel */
     const subPolice = supabase
       .channel("police_alerts-channel")
       .on(
@@ -116,19 +123,19 @@ const PoliceDashboard: React.FC = () => {
           const change = payload.new as PoliceAlert | null;
           const old = payload.old as PoliceAlert | null;
           if (payload.eventType === "INSERT" && change) {
-            setPoliceAlerts((prev) => [change, ...prev]);
+            setPoliceAlerts(prev => [change, ...prev]);
           } else if (payload.eventType === "UPDATE" && change) {
-            setPoliceAlerts((prev) =>
-              prev.map((a) => (a.id === change.id ? change : a))
+            setPoliceAlerts(prev =>
+              prev.map(a => (a.id === change.id ? change : a))
             );
           } else if (payload.eventType === "DELETE" && old) {
-            setPoliceAlerts((prev) => prev.filter((a) => a.id !== old.id));
+            setPoliceAlerts(prev => prev.filter(a => a.id !== old.id));
           }
         }
       )
       .subscribe();
 
-    /* Panic alerts */
+    /** Panic alerts channel */
     const subPanic = supabase
       .channel("panic_alerts-channel")
       .on(
@@ -138,56 +145,25 @@ const PoliceDashboard: React.FC = () => {
           const change = payload.new as PanicAlert | null;
           const old = payload.old as PanicAlert | null;
           if (payload.eventType === "INSERT" && change) {
-            setPanicAlerts((prev) => [change, ...prev]);
+            setPanicAlerts(prev => [change, ...prev]);
+            addUserToMap(change.user_id);
           } else if (payload.eventType === "UPDATE" && change) {
-            setPanicAlerts((prev) =>
-              prev.map((a) => (a.id === change.id ? change : a))
+            setPanicAlerts(prev =>
+              prev.map(a => (a.id === change.id ? change : a))
             );
+            addUserToMap(change.user_id);
           } else if (payload.eventType === "DELETE" && old) {
-            setPanicAlerts((prev) => prev.filter((a) => a.id !== old.id));
+            setPanicAlerts(prev => prev.filter(a => a.id !== old.id));
           }
         }
       )
       .subscribe();
-
-    /* User locations */
-    const subUserLoc = supabase
-      .channel("user_locations-channel")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "user_locations" },
-        (payload) => {
-          const change = payload.new as UserLocation | null;
-          const old = payload.old as UserLocation | null;
-          if (payload.eventType === "INSERT" && change) {
-            setUserLocations((prev) => [...prev, change]);
-          } else if (payload.eventType === "UPDATE" && change) {
-            setUserLocations((prev) =>
-              prev.map((l) => (l.id === change.id ? change : l))
-            );
-          } else if (payload.eventType === "DELETE" && old) {
-            setUserLocations((prev) => prev.filter((l) => l.id !== old.id));
-          }
-        }
-      )
-      .subscribe();
-
-    /* Initial fetch of user locations */
-    const fetchUsers = async () => {
-      const { data, error } = await supabase
-        .from("user_locations")
-        .select("*")
-        .order("created_at", { ascending: false });
-      if (!error && data) setUserLocations(data);
-    };
-    fetchUsers();
 
     return () => {
       supabase.removeChannel(subPolice);
       supabase.removeChannel(subPanic);
-      supabase.removeChannel(subUserLoc);
     };
-  }, []);
+  }, [userMap]);
 
   /* ------------------------------------------------------------------ 4️⃣ Map initialization & marker handling -------------------------------------------------- */
   const loadGoogleMaps = (): Promise<void> => {
@@ -219,22 +195,21 @@ const PoliceDashboard: React.FC = () => {
           center: { lat: 22.5726, lng: 88.3639 },
           zoom: 12,
         });
-        updateMarkers(panicAlerts, policeAlerts, userLocations);
+        updateMarkers(panicAlerts, policeAlerts);
       })
       .catch(console.error);
   }, []);
 
-  // Sync markers whenever any dataset changes
+  // Update markers whenever data changes
   useEffect(() => {
     if (!mapInstance.current) return;
-    updateMarkers(panicAlerts, policeAlerts, userLocations);
-  }, [panicAlerts, policeAlerts, userLocations]);
+    updateMarkers(panicAlerts, policeAlerts);
+  }, [panicAlerts, policeAlerts]);
 
-  /** Renders all markers (red: panic, yellow: police, green: user locations). */
+  /** Renders all markers (red for panic, yellow for police). */
   const updateMarkers = (
     alerts: PanicAlert[],
-    police: PoliceAlert[],
-    users: UserLocation[]
+    police: PoliceAlert[]
   ) => {
     if (!mapInstance.current) return;
 
@@ -242,7 +217,7 @@ const PoliceDashboard: React.FC = () => {
     markersRef.current.forEach((m) => m.setMap(null));
     markersRef.current = [];
 
-    /* Panic alerts – red */
+    // Panic alerts – red
     alerts.forEach((alert) => {
       const marker = new (window as any).google.maps.Marker({
         position: { lat: alert.latitude, lng: alert.longitude },
@@ -268,7 +243,7 @@ const PoliceDashboard: React.FC = () => {
       markersRef.current.push(marker);
     });
 
-    /* Police alerts – yellow */
+    // Police alerts – yellow
     police.forEach((pol) => {
       const marker = new (window as any).google.maps.Marker({
         position: { lat: pol.latitude, lng: pol.longitude },
@@ -283,28 +258,6 @@ const PoliceDashboard: React.FC = () => {
           Message: ${pol.message}<br/>
           Status: ${pol.status}<br/>
           Time: ${new Date(pol.created_at).toLocaleString()}
-        </div>`,
-      });
-
-      marker.addListener("click", () => info.open(mapInstance.current, marker));
-
-      markersRef.current.push(marker);
-    });
-
-    /* User locations – green */
-    users.forEach((user) => {
-      const marker = new (window as any).google.maps.Marker({
-        position: { lat: user.latitude, lng: user.longitude },
-        map: mapInstance.current,
-        icon: "http://maps.google.com/mapfiles/ms/icons/green-dot.png",
-        title: `User: ${user.user_id}`,
-      });
-
-      const info = new (window as any).google.maps.InfoWindow({
-        content: `<div>
-          <strong>User Location</strong><br/>
-          User ID: ${user.user_id}<br/>
-          Time: ${new Date(user.created_at).toLocaleString()}
         </div>`,
       });
 
@@ -430,7 +383,7 @@ const PoliceDashboard: React.FC = () => {
           <CardContent className="p-4 text-center">
             <Button
               onClick={() => {
-                /* Real‑time keeps data up to date; refresh triggers manual sync */
+                /* Real‑time keeps the UI in sync – this button only forces a manual refresh */
               }}
             >
               Refresh
@@ -482,6 +435,10 @@ const PoliceDashboard: React.FC = () => {
                         <div>
                           <p>
                             <strong>ID:</strong> {alert.id}
+                          </p>
+                          <p>
+                            <strong>User:</strong>{" "}
+                            {userMap[alert.user_id] ?? alert.user_id}
                           </p>
                           <p>
                             <strong>Status:</strong> {alert.status}
@@ -574,49 +531,10 @@ const PoliceDashboard: React.FC = () => {
                     </p>
                   </div>
                   {pol.status !== "resolved" && (
-                    <Button
-                      onClick={() => handleResolvePoliceAlert(pol.id)}
-                    >
+                    <Button onClick={() => handleResolvePoliceAlert(pol.id)}>
                       Resolve
                     </Button>
                   )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Live User Locations */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Live User Locations</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {userLocations.length === 0 ? (
-            <p>No user locations available</p>
-          ) : (
-            <ul className="space-y-3">
-              {userLocations.map((loc) => (
-                <li
-                  key={loc.id}
-                  className="p-3 border rounded-lg shadow flex justify-between items-center"
-                >
-                  <div>
-                    <p>
-                      <strong>User ID:</strong> {loc.user_id}
-                    </p>
-                    <p>
-                      <strong>Latitude:</strong> {loc.latitude}
-                    </p>
-                    <p>
-                      <strong>Longitude:</strong> {loc.longitude}
-                    </p>
-                    <p>
-                      <strong>Last Updated:</strong>{" "}
-                      {new Date(loc.created_at).toLocaleString()}
-                    </p>
-                  </div>
                 </li>
               ))}
             </ul>
@@ -639,7 +557,8 @@ const PoliceDashboard: React.FC = () => {
                 <strong>ID:</strong> {selectedAlert.id}
               </p>
               <p>
-                <strong>User:</strong> {selectedAlert.user_id}
+                <strong>User:</strong>{" "}
+                {userMap[selectedAlert.user_id] ?? selectedAlert.user_id}
               </p>
               <p>
                 <strong>Status:</strong> {selectedAlert.status}
